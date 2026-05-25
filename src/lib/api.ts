@@ -95,6 +95,19 @@ export async function getFood(fdcId: number): Promise<FoodDetail> {
   return res.json();
 }
 
+export interface QuotaInfo {
+  used: number;
+  limit: number;
+  remaining: number;
+  whitelisted: boolean;
+}
+
+export async function fetchQuota(): Promise<QuotaInfo> {
+  const res = await fetch(`${API_BASE}/meal-plans/quota`);
+  if (!res.ok) throw new Error("Quota check failed");
+  return res.json();
+}
+
 export async function generateMealPlan(profile: {
   diabetes_type?: string;
   carb_target_g?: number;
@@ -108,7 +121,10 @@ export async function generateMealPlan(profile: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(profile),
   });
-  if (!res.ok) throw new Error("Generation failed");
+  if (!res.ok) {
+    const msg = res.status === 429 ? "429 Too Many Requests" : "Generation failed";
+    throw new Error(msg);
+  }
   return res.json();
 }
 

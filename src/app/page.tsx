@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { generateMealPlan, swapFood, type MealPlan, type SwapResult } from "@/lib/api";
+import { generateMealPlan, swapFood, fetchQuota, type MealPlan, type SwapResult, type QuotaInfo } from "@/lib/api";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,13 +39,20 @@ export default function Home() {
   const [plan, setPlan] = useState<MealPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [progressPercent, setProgressPercent] = useState(0);
   const [emailUnlocked, setEmailUnlocked] = useState(false);
   const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
 
   // Restore unlock state from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("carbwise_email");
     if (saved) { setWaitlistEmail(saved); setEmailUnlocked(true); }
+  }, []);
+
+  // Fetch quota on mount
+  useEffect(() => {
+    fetchQuota().then(setQuota).catch(() => {});
   }, []);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState("");
@@ -54,7 +63,7 @@ export default function Home() {
   const handleUnlock = async () => {
     if (!waitlistEmail.includes("@")) return;
     try {
-      await fetch("http://localhost:8000/waitlist", {
+      await fetch(`${API_BASE}/waitlist`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: waitlistEmail }),
       });
@@ -67,7 +76,7 @@ export default function Home() {
   const submitFeedback = async () => {
     if (!feedbackMsg.trim()) return;
     try {
-      await fetch("http://localhost:8000/feedback", {
+      await fetch(`${API_BASE}/feedback`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: feedbackMsg, email: feedbackEmail }),
       });
@@ -141,28 +150,65 @@ export default function Home() {
     }
   };
 
-  // Rotate loading steps every 4 seconds
+  // Phase-locked: text steps drive the progress bar. ~5s/step × 7 steps = ~35s.
+  const stepProgressMap = [15, 30, 45, 60, 72, 82, 90, 95];
+  const STEP_INTERVAL = 5000; // ms per step
+
   useEffect(() => {
     if (loading) {
-      setLoadingStep(0);
+      // Advance steps 0→6. Step 7 stays active until API returns.
       timerRef.current = setInterval(() => {
-        setLoadingStep((prev) => (prev < RITUAL_STEPS.length - 1 ? prev + 1 : prev));
-      }, 4000);
+        setLoadingStep((prev) => {
+          const next = prev < RITUAL_STEPS.length - 1 ? prev + 1 : prev;
+          setProgressPercent(stepProgressMap[next]);
+          return next;
+        });
+      }, STEP_INTERVAL);
+      // Creep progress within final step: 90% → 95% over time
+      const creepTimer = setInterval(() => {
+        setLoadingStep((prev) => {
+          if (prev < RITUAL_STEPS.length - 1) return prev;
+          setProgressPercent((p) => Math.min(p + 0.12, stepProgressMap[prev]));
+          return prev;
+        });
+      }, 600);
+      (timerRef as any).creepCleanup = creepTimer;
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
+      if ((timerRef as any).creepCleanup) clearInterval((timerRef as any).creepCleanup);
+      setProgressPercent(100);
+      setLoadingStep(RITUAL_STEPS.length);
     }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if ((timerRef as any).creepCleanup) clearInterval((timerRef as any).creepCleanup);
+    };
   }, [loading]);
 
   const handleGenerate = async () => {
-    setLoading(true);
+    // Check quota before generating
+    if (quota && !quota.whitelisted && quota.remaining <= 0) {
+      toast.error(`今日生成次数已用完（${quota.limit}次/天），请明天再来`);
+      return;
+    }
+
     setPlan(null);
+    setProgressPercent(0);
+    setLoadingStep(0);
+    setLoading(true);
     try {
       const result = await generateMealPlan(profile);
       setPlan(result);
       toast.success("Meal plan ready!");
-    } catch {
-      toast.error("Failed to generate. Check API connection.");
+      // Refresh quota after generation
+      fetchQuota().then(setQuota).catch(() => {});
+    } catch (e: any) {
+      if (e.message?.includes("429") || e.message?.includes("Too Many")) {
+        toast.error("今日生成次数已用完，请明天再来");
+        setQuota((prev) => prev ? { ...prev, remaining: 0 } : null);
+      } else {
+        toast.error("生成失败，请检查网络连接后重试");
+      }
     } finally {
       setLoading(false);
     }
@@ -216,9 +262,27 @@ export default function Home() {
         </CardContent>
       </Card>
 
-      <Button onClick={handleGenerate} disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700" size="lg">
-        {loading ? "Generating..." : "Generate Today's Meal Plan"}
+      <Button
+        onClick={handleGenerate}
+        disabled={loading || (!!quota && !quota.whitelisted && quota.remaining <= 0)}
+        className="w-full bg-emerald-600 hover:bg-emerald-700"
+        size="lg"
+      >
+        {loading
+          ? "Generating..."
+          : (quota && !quota.whitelisted && quota.remaining <= 0)
+            ? "No Generations Left Today"
+            : "Generate Today's Meal Plan"}
       </Button>
+
+      {/* Quota display */}
+      {quota && (
+        <p className="text-xs text-center text-stone-400">
+          {quota.whitelisted
+            ? "Unlimited generations (whitelisted)"
+            : `${quota.remaining} of ${quota.limit} generations left today`}
+        </p>
+      )}
 
       {/* Loading Ritual */}
       {loading && (
@@ -230,20 +294,23 @@ export default function Home() {
             </div>
             <div className="space-y-3">
               {RITUAL_STEPS.map((step, i) => {
-                const state = i < loadingStep ? "done" : i === loadingStep ? "active" : "pending";
+                const isLast = i === RITUAL_STEPS.length - 1;
+                  const state = i < loadingStep ? "done" : i === loadingStep ? "active" : "pending";
+                  // Last step never shows "done" until loading completes
+                  const displayState = loading && isLast && state === "done" ? "active" : state;
                 return (
                   <div
                     key={i}
                     className={`flex items-center gap-3 text-sm transition-all duration-500 ${
-                      state === "pending" ? "opacity-30" : "opacity-100"
+                      displayState === "pending" ? "opacity-30" : "opacity-100"
                     }`}
                   >
                     <step.Icon className="w-4 h-4" />
-                    <span className={state === "active" ? "text-emerald-800 font-medium" : "text-stone-600"}>
+                    <span className={displayState === "active" ? "text-emerald-800 font-medium" : "text-stone-600"}>
                       {step.text}
                     </span>
-                    {state === "done" && <span className="text-emerald-500 ml-auto">✓</span>}
-                    {state === "active" && (
+                    {displayState === "done" && <span className="text-emerald-500 ml-auto">✓</span>}
+                    {displayState === "active" && (
                       <span className="ml-auto flex gap-1">
                         <span className="w-1 h-1 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                         <span className="w-1 h-1 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -254,11 +321,14 @@ export default function Home() {
                 );
               })}
             </div>
-            {/* Progress bar */}
+            {/* Progress bar — phase-locked to loadingStep */}
             <div className="mt-4 h-1.5 bg-emerald-200 rounded-full overflow-hidden">
               <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-1000 ease-out"
-                style={{ width: `${((loadingStep + 1) / RITUAL_STEPS.length) * 100}%` }}
+                className="h-full bg-emerald-500 rounded-full ease-out"
+                style={{
+                  width: `${loading ? progressPercent : 100}%`,
+                  transition: "width 4000ms cubic-bezier(0.4, 0, 0.2, 1)",
+                }}
               />
             </div>
           </CardContent>
