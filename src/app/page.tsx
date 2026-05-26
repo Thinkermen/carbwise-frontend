@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { generateMealPlanStream, swapFood, fetchQuota, type MealPlan, type SwapResult, type QuotaInfo } from "@/lib/api";
+import { generateMealPlan, swapFood, fetchQuota, type MealPlan, type SwapResult, type QuotaInfo } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 import { Button } from "@/components/ui/button";
@@ -56,7 +56,8 @@ export default function Home() {
 
   // Fetch quota on mount
   useEffect(() => {
-    fetchQuota().then(setQuota).catch(() => {});
+    const email = localStorage.getItem("carbwise_email") || undefined;
+    fetchQuota(email).then(setQuota).catch(() => {});
   }, []);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState("");
@@ -73,7 +74,8 @@ export default function Home() {
       });
       localStorage.setItem("carbwise_email", waitlistEmail);
       setEmailUnlocked(true);
-      toast.success("Insights unlocked! You're on the early access list.");
+      fetchQuota(waitlistEmail).then(setQuota).catch(() => {});
+      toast.success("99 generations unlocked! 🎉");
     } catch { toast.error("Failed. Try again."); }
   };
 
@@ -197,27 +199,11 @@ export default function Home() {
     setStreamPhase("");
     setLoading(true);
     try {
-      for await (const event of generateMealPlanStream(profile)) {
-        switch (event.phase) {
-          case "thinking":
-            setStreamPhase("AI is reasoning about your nutrition profile...");
-            break;
-          case "generating":
-            setStreamPhase("Writing your personalized meal plan...");
-            break;
-          case "validating":
-            setStreamPhase("Verifying foods against 507K USDA records...");
-            break;
-          case "done":
-            if (event.plan) setPlan(event.plan);
-            toast.success("Meal plan ready!");
-            fetchQuota().then(setQuota).catch(() => {});
-            break;
-          case "error":
-            toast.error(event.message || "生成失败，请重试");
-            break;
-        }
-      }
+      const email = localStorage.getItem("carbwise_email") || undefined;
+      const result = await generateMealPlan({ ...profile, email });
+      setPlan(result);
+      toast.success("Meal plan ready!");
+      fetchQuota(email).then(setQuota).catch(() => {});
     } catch (e: any) {
       if (e.message?.includes("429") || e.message?.includes("Too Many")) {
         toast.error("今日生成次数已用完，请明天再来");
@@ -297,6 +283,9 @@ export default function Home() {
           {quota.whitelisted
             ? "Unlimited generations (whitelisted)"
             : `${quota.remaining} of ${quota.limit} generations left today`}
+          {!quota.whitelisted && quota.limit === 3 && (
+            <> &mdash; <button type="button" onClick={() => document.getElementById("email-input")?.focus()} className="underline hover:text-emerald-600">submit email for 99/day</button></>
+          )}
         </p>
       )}
 
@@ -472,6 +461,7 @@ export default function Home() {
                         <div className="flex gap-1 justify-center">
                           <input
                             type="email"
+                            id="email-input"
                             placeholder="your@email.com"
                             aria-label="Email address"
                             value={waitlistEmail}
