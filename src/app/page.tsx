@@ -196,7 +196,7 @@ export default function Home() {
           <div>
             <label className="text-xs font-medium text-stone-500">Diabetes Type</label>
             <Select value={profile.diabetes_type} onValueChange={(v) => v && setProfile({ ...profile, diabetes_type: v })}>
-              <SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Type 1">Type 1</SelectItem>
                 <SelectItem value="Type 2">Type 2</SelectItem>
@@ -208,7 +208,7 @@ export default function Home() {
           <div>
             <label className="text-xs font-medium text-stone-500">Cuisine</label>
             <Select value={profile.cuisine} onValueChange={(v) => v && setProfile({ ...profile, cuisine: v })}>
-              <SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="American">American</SelectItem>
                 <SelectItem value="Mediterranean">Mediterranean</SelectItem>
