@@ -43,6 +43,20 @@ export interface MealPlan {
   meals: Meal[];
 }
 
+export interface QuotaInfo {
+  used: number;
+  limit: number;
+  remaining: number;
+  whitelisted: boolean;
+  hasEmail?: boolean;
+}
+
+export interface StreamEvent {
+  phase: "thinking" | "generating" | "validating" | "done" | "error";
+  message?: string;
+  plan?: MealPlan;
+}
+
 export interface Meal {
   type: string;
   name: string;
@@ -96,17 +110,21 @@ export async function getFood(fdcId: number): Promise<FoodDetail> {
   return res.json();
 }
 
-export interface QuotaInfo {
-  used: number;
-  limit: number;
-  remaining: number;
-  whitelisted: boolean;
-}
-
-export interface StreamEvent {
-  phase: "thinking" | "generating" | "validating" | "done" | "error";
-  message?: string;
-  plan?: MealPlan;
+export async function generateMealPlan(profile: {
+  diabetes_type?: string;
+  carb_target_g?: number;
+  calorie_target?: number;
+  allergies?: string[];
+  preferences?: string;
+  cuisine?: string;
+}): Promise<MealPlan> {
+  const res = await fetch(`${API_BASE}/meal-plans/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile),
+  });
+  if (!res.ok) throw new Error("Generation failed");
+  return res.json();
 }
 
 export async function* generateMealPlanStream(profile: {
@@ -116,31 +134,27 @@ export async function* generateMealPlanStream(profile: {
   allergies?: string[];
   preferences?: string;
   cuisine?: string;
+  email?: string;
 }): AsyncGenerator<StreamEvent> {
   const res = await fetch(`${API_BASE}/meal-plans/generate-stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(profile),
   });
-
   if (!res.ok) {
     const msg = res.status === 429 ? "429 Too Many Requests" : "Generation failed";
     throw new Error(msg);
   }
-
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
-
       for (const line of lines) {
         if (line.startsWith("data: ")) {
           const event: StreamEvent = JSON.parse(line.slice(6));
@@ -158,27 +172,6 @@ export async function fetchQuota(email?: string): Promise<QuotaInfo> {
   const params = email ? `?email=${encodeURIComponent(email)}` : "";
   const res = await fetch(`${API_BASE}/meal-plans/quota${params}`);
   if (!res.ok) throw new Error("Quota check failed");
-  return res.json();
-}
-
-export async function generateMealPlan(profile: {
-  diabetes_type?: string;
-  carb_target_g?: number;
-  calorie_target?: number;
-  allergies?: string[];
-  preferences?: string;
-  cuisine?: string;
-  email?: string;
-}): Promise<MealPlan> {
-  const res = await fetch(`${API_BASE}/meal-plans/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(profile),
-  });
-  if (!res.ok) {
-    const msg = res.status === 429 ? "429 Too Many Requests" : "Generation failed";
-    throw new Error(msg);
-  }
   return res.json();
 }
 

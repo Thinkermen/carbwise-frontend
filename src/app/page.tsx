@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { generateMealPlan, swapFood, type MealPlan, type SwapResult } from "@/lib/api";
+import { generateMealPlanStream, fetchQuota, swapFood, type MealPlan, type SwapResult, type QuotaInfo } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +37,9 @@ export default function Home() {
   const [plan, setPlan] = useState<MealPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [streamPhase, setStreamPhase] = useState("");
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
   const [emailUnlocked, setEmailUnlocked] = useState(false);
   const [waitlistEmail, setWaitlistEmail] = useState("");
 
@@ -44,6 +47,12 @@ export default function Home() {
   useEffect(() => {
     const saved = localStorage.getItem("carbwise_email");
     if (saved) { setWaitlistEmail(saved); setEmailUnlocked(true); }
+  }, []);
+
+  // Fetch quota on mount
+  useEffect(() => {
+    const email = localStorage.getItem("carbwise_email") || undefined;
+    fetchQuota(email).then(setQuota).catch(() => {});
   }, []);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState("");
@@ -60,7 +69,8 @@ export default function Home() {
       });
       localStorage.setItem("carbwise_email", waitlistEmail);
       setEmailUnlocked(true);
-      toast.success("Insights unlocked! You're on the early access list.");
+      fetchQuota(waitlistEmail).then(setQuota).catch(() => {});
+      toast.success("99 generations unlocked!");
     } catch { toast.error("Failed. Try again."); }
   };
 
@@ -168,14 +178,45 @@ export default function Home() {
   }, [loading]);
 
   const handleGenerate = async () => {
-    setLoading(true);
+    if (quota && !quota.whitelisted && quota.remaining <= 0) {
+      toast.error(`今日生成次数已用完（${quota.limit}次/天），请明天再来`);
+      return;
+    }
     setPlan(null);
+    setProgressPercent(0);
+    setLoadingStep(0);
+    setStreamPhase("");
+    setLoading(true);
     try {
-      const result = await generateMealPlan(profile);
-      setPlan(result);
-      toast.success("Meal plan ready!");
-    } catch {
-      toast.error("Failed to generate. Check API connection.");
+      const email = localStorage.getItem("carbwise_email") || undefined;
+      for await (const event of generateMealPlanStream({ ...profile, email })) {
+        switch (event.phase) {
+          case "thinking":
+            setStreamPhase("AI is reasoning about your nutrition profile...");
+            break;
+          case "generating":
+            setStreamPhase("Writing your personalized meal plan...");
+            break;
+          case "validating":
+            setStreamPhase("Verifying foods against USDA database...");
+            break;
+          case "done":
+            if (event.plan) setPlan(event.plan);
+            toast.success("Meal plan ready!");
+            fetchQuota(email).then(setQuota).catch(() => {});
+            break;
+          case "error":
+            toast.error(event.message || "Generation failed");
+            break;
+        }
+      }
+    } catch (e: any) {
+      if (e.message?.includes("429")) {
+        toast.error("今日生成次数已用完，请明天再来");
+        setQuota((prev) => prev ? { ...prev, remaining: 0 } : null);
+      } else {
+        toast.error("生成失败，请检查网络连接后重试");
+      }
     } finally {
       setLoading(false);
     }
@@ -229,9 +270,28 @@ export default function Home() {
         </CardContent>
       </Card>
 
-      <Button onClick={handleGenerate} disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700" size="lg">
-        {loading ? "Generating..." : "Generate Today's Meal Plan"}
+      <Button
+        onClick={handleGenerate}
+        disabled={loading || (!!quota && !quota.whitelisted && quota.remaining <= 0)}
+        className="w-full bg-emerald-600 hover:bg-emerald-700" size="lg"
+      >
+        {loading
+          ? "Generating..."
+          : (quota && !quota.whitelisted && quota.remaining <= 0)
+            ? "No Generations Left Today"
+            : "Generate Today's Meal Plan"}
       </Button>
+
+      {quota && (
+        <p className="text-xs text-center text-stone-400">
+          {quota.whitelisted
+            ? "Unlimited generations (whitelisted)"
+            : `${quota.remaining} of ${quota.limit} generations left today`}
+          {!quota.whitelisted && quota.limit === 3 && (
+            <> &mdash; <button type="button" onClick={() => document.getElementById("email-input")?.focus()} className="underline hover:text-emerald-600">submit email for 99/day</button></>
+          )}
+        </p>
+      )}
 
       {/* Loading Ritual */}
       {loading && (
@@ -239,7 +299,9 @@ export default function Home() {
           <CardContent className="py-6">
             <div className="flex items-center gap-2 mb-4">
               <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm font-medium text-emerald-700">AI Precision Meal Planning</span>
+              <span className="text-sm font-medium text-emerald-700">
+                {streamPhase || "AI Precision Meal Planning"}
+              </span>
             </div>
             <div className="space-y-3">
               {RITUAL_STEPS.map((step, i) => {
