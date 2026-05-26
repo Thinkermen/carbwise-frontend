@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { generateMealPlan, swapFood, fetchQuota, type MealPlan, type SwapResult, type QuotaInfo } from "@/lib/api";
+import { generateMealPlanStream, swapFood, fetchQuota, type MealPlan, type SwapResult, type QuotaInfo } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [progressPercent, setProgressPercent] = useState(0);
+  const [streamPhase, setStreamPhase] = useState<string>("");
   const [emailUnlocked, setEmailUnlocked] = useState(false);
   const [waitlistEmail, setWaitlistEmail] = useState("");
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
@@ -185,7 +186,6 @@ export default function Home() {
   }, [loading]);
 
   const handleGenerate = async () => {
-    // Check quota before generating
     if (quota && !quota.whitelisted && quota.remaining <= 0) {
       toast.error(`今日生成次数已用完（${quota.limit}次/天），请明天再来`);
       return;
@@ -194,13 +194,30 @@ export default function Home() {
     setPlan(null);
     setProgressPercent(0);
     setLoadingStep(0);
+    setStreamPhase("");
     setLoading(true);
     try {
-      const result = await generateMealPlan(profile);
-      setPlan(result);
-      toast.success("Meal plan ready!");
-      // Refresh quota after generation
-      fetchQuota().then(setQuota).catch(() => {});
+      for await (const event of generateMealPlanStream(profile)) {
+        switch (event.phase) {
+          case "thinking":
+            setStreamPhase("AI is reasoning about your nutrition profile...");
+            break;
+          case "generating":
+            setStreamPhase("Writing your personalized meal plan...");
+            break;
+          case "validating":
+            setStreamPhase("Verifying foods against 507K USDA records...");
+            break;
+          case "done":
+            if (event.plan) setPlan(event.plan);
+            toast.success("Meal plan ready!");
+            fetchQuota().then(setQuota).catch(() => {});
+            break;
+          case "error":
+            toast.error(event.message || "生成失败，请重试");
+            break;
+        }
+      }
     } catch (e: any) {
       if (e.message?.includes("429") || e.message?.includes("Too Many")) {
         toast.error("今日生成次数已用完，请明天再来");
@@ -289,7 +306,9 @@ export default function Home() {
           <CardContent className="py-6">
             <div className="flex items-center gap-2 mb-4">
               <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm font-medium text-emerald-700">AI Precision Meal Planning</span>
+              <span className="text-sm font-medium text-emerald-700">
+                {streamPhase || "AI Precision Meal Planning"}
+              </span>
             </div>
             <div className="space-y-3">
               {RITUAL_STEPS.map((step, i) => {
