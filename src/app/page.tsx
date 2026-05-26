@@ -106,6 +106,15 @@ export default function Home() {
     return Math.round((effectiveGi * available) / 100 * 10) / 10;
   };
 
+  // Strip USDA brand names like "HEINEN'S - Tomato and Mozzarella..." → "Tomato and Mozzarella"
+  const cleanFoodName = (name: string) => {
+    if (!name) return "";
+    // Remove ALL-CAPS brand prefix: "BRAND NAME - actual food description"
+    const cleaned = name.replace(/^[A-Z][A-Z &'-]+ - /, "").trim();
+    // Truncate long names (brand database entries can be ridiculously long)
+    return cleaned.length > 65 ? cleaned.slice(0, 62) + "..." : cleaned;
+  };
+
   const handleSwap = async (mealIdx: number, foodIdx: number, currentFdcId?: number) => {
     if (!currentFdcId || !plan) return;
     try {
@@ -397,14 +406,9 @@ export default function Home() {
                     <li key={j} className={`flex justify-between text-sm items-center ${isSpikeBlunter ? "ring-1 ring-amber-200 bg-amber-50/50 rounded px-2 -mx-2 py-1" : ""}`}>
                       <div className="flex-1 min-w-0">
                         <span className={food.hallucinated ? "text-amber-600" : ""}>
-                          {food.db_name || food.name}
-                          {isSpikeBlunter && <span className="text-[10px] ml-1 text-amber-600 font-medium"><Zap className="w-3 h-3 inline" /> Spike Blunter</span>}
+                          {cleanFoodName(food.db_name || food.name)}
+                          {isSpikeBlunter && <span className="text-[10px] ml-1 text-amber-600 font-medium" translate="no"><Zap className="w-3 h-3 inline" /> Spike Blunter</span>}
                         </span>
-                        {food.ai_name && food.db_name && food.db_name !== food.ai_name && (
-                          <span className="text-xs text-stone-500 line-through ml-1 block">
-                            AI: {food.ai_name}
-                          </span>
-                        )}
                         {food.cooked_state && (food.cooked_state === "cooked" || food.cooked_state === "raw") && (
                           <Badge variant="outline" className="text-[10px] px-1 py-0 ml-1 text-stone-500">
                             {food.cooked_state}
