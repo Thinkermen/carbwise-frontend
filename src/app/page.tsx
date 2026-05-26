@@ -59,6 +59,8 @@ export default function Home() {
   const [feedbackEmail, setFeedbackEmail] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingPlan = useRef<MealPlan | null>(null);
+  const streamDone = useRef(false);
 
   const handleUnlock = async () => {
     if (!waitlistEmail.includes("@")) return;
@@ -164,13 +166,26 @@ export default function Home() {
     }
   };
 
-  // Rotate loading steps every 4 seconds
+  // Progress bar: advance steps, reveal plan only when bar reaches final step
   useEffect(() => {
     if (loading) {
       setLoadingStep(0);
+      setProgressPercent(0);
+      pendingPlan.current = null;
+      streamDone.current = false;
       timerRef.current = setInterval(() => {
-        setLoadingStep((prev) => (prev < RITUAL_STEPS.length - 1 ? prev + 1 : prev));
-      }, 4000);
+        setLoadingStep((prev) => {
+          const next = prev < RITUAL_STEPS.length - 1 ? prev + 1 : prev;
+          setProgressPercent(Math.round((next / RITUAL_STEPS.length) * 100));
+          // Reveal plan when we reach the final step AND stream is done
+          if (next === RITUAL_STEPS.length - 1 && streamDone.current && pendingPlan.current) {
+            setPlan(pendingPlan.current);
+            toast.success("Meal plan ready!");
+            setLoading(false);
+          }
+          return next;
+        });
+      }, 3000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
@@ -183,8 +198,6 @@ export default function Home() {
       return;
     }
     setPlan(null);
-    setProgressPercent(0);
-    setLoadingStep(0);
     setStreamPhase("");
     setLoading(true);
     try {
@@ -201,12 +214,15 @@ export default function Home() {
             setStreamPhase("Verifying foods against USDA database...");
             break;
           case "done":
-            if (event.plan) setPlan(event.plan);
-            toast.success("Meal plan ready!");
-            fetchQuota(email).then(setQuota).catch(() => {});
+            if (event.plan) {
+              pendingPlan.current = event.plan;
+              streamDone.current = true;
+              fetchQuota(email).then(setQuota).catch(() => {});
+            }
             break;
           case "error":
             toast.error(event.message || "Generation failed");
+            setLoading(false);
             break;
         }
       }
@@ -217,7 +233,6 @@ export default function Home() {
       } else {
         toast.error("生成失败，请检查网络连接后重试");
       }
-    } finally {
       setLoading(false);
     }
   };
