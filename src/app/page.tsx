@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { generateMealPlanStream, swapFood, fetchQuota, type MealPlan, type SwapResult, type QuotaInfo } from "@/lib/api";
+import { generateMealPlan, swapFood, fetchQuota, type MealPlan, type SwapResult, type QuotaInfo } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 import { Button } from "@/components/ui/button";
@@ -194,30 +194,12 @@ export default function Home() {
     setPlan(null);
     setProgressPercent(0);
     setLoadingStep(0);
-    setStreamPhase("");
     setLoading(true);
     try {
-      for await (const event of generateMealPlanStream(profile)) {
-        switch (event.phase) {
-          case "thinking":
-            setStreamPhase("AI is reasoning about your nutrition profile...");
-            break;
-          case "generating":
-            setStreamPhase("Writing your personalized meal plan...");
-            break;
-          case "validating":
-            setStreamPhase("Verifying foods against 507K USDA records...");
-            break;
-          case "done":
-            if (event.plan) setPlan(event.plan);
-            toast.success("Meal plan ready!");
-            fetchQuota().then(setQuota).catch(() => {});
-            break;
-          case "error":
-            toast.error(event.message || "生成失败，请重试");
-            break;
-        }
-      }
+      const result = await generateMealPlan(profile);
+      setPlan(result);
+      toast.success("Meal plan ready!");
+      fetchQuota().then(setQuota).catch(() => {});
     } catch (e: any) {
       if (e.message?.includes("429") || e.message?.includes("Too Many")) {
         toast.error("今日生成次数已用完，请明天再来");
