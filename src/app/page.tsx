@@ -392,7 +392,7 @@ export default function Home() {
             {plan.total_fat_g && <Badge variant="outline" className="text-amber-700 border-amber-300">{plan.total_fat_g}g fat</Badge>}
           </div>
           {plan.meals?.map((meal, i) => (
-            <Card key={i}>
+            <Card key={i} className="animate-meal-reveal" style={{ animationDelay: `${i * 0.2}s` }}>
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-center">
                   <CardTitle className="text-sm capitalize">{meal.type}</CardTitle>
