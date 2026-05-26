@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import Link from "next/link";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const geistSans = Geist({ subsets: ["latin"] });
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </nav>
         <main className="mx-auto max-w-lg px-4 py-6">{children}</main>
         <Toaster />
+        <Analytics />
       </body>
     </html>
   );

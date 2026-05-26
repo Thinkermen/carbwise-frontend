@@ -35,6 +35,9 @@ const RITUAL_STEPS = [
   { text: "Finalizing your precision meal plan...", Icon: Sparkles },
 ];
 
+const stepProgressMap = [15, 30, 45, 60, 72, 82, 90, 95];
+const STEP_INTERVAL = 5000; // ms per step
+
 export default function Home() {
   const [plan, setPlan] = useState<MealPlan | null>(null);
   const [loading, setLoading] = useState(false);
@@ -149,10 +152,6 @@ export default function Home() {
       toast.error("Swap failed");
     }
   };
-
-  // Phase-locked: text steps drive the progress bar. ~5s/step × 7 steps = ~35s.
-  const stepProgressMap = [15, 30, 45, 60, 72, 82, 90, 95];
-  const STEP_INTERVAL = 5000; // ms per step
 
   useEffect(() => {
     if (loading) {
@@ -414,6 +413,7 @@ export default function Home() {
                         <span className="tabular-nums">{food.portion_g}g</span>
                         {food.fdc_id && (
                           <button
+                            type="button"
                             onClick={() => handleSwap(i, j, food.fdc_id)}
                             className="text-xs text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded px-1.5 py-0.5 transition-colors"
                             title="Swap for similar food"
@@ -454,11 +454,13 @@ export default function Home() {
                           <input
                             type="email"
                             placeholder="your@email.com"
+                            aria-label="Email address"
                             value={waitlistEmail}
                             onChange={(e) => setWaitlistEmail(e.target.value)}
                             className="text-[11px] px-2 py-1 border border-amber-300 rounded w-36 focus:outline-none focus:ring-1 focus:ring-amber-400"
                           />
                           <button
+                            type="button"
                             onClick={handleUnlock}
                             className="text-[11px] px-2 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors"
                           >
@@ -478,6 +480,7 @@ export default function Home() {
 
       {/* Floating Feedback Button — mobile-friendly */}
       <button
+        type="button"
         onClick={() => setShowFeedback(true)}
         className="fixed bottom-6 right-6 z-50 w-12 h-12 bg-amber-500 text-white rounded-full shadow-lg hover:bg-amber-600 transition-all hover:scale-105 flex items-center justify-center text-lg"
         title="Send feedback"
@@ -509,13 +512,14 @@ export default function Home() {
                 <input
                   type="email"
                   placeholder="Email (optional)"
+                  aria-label="Feedback email address"
                   value={feedbackEmail}
                   onChange={(e) => setFeedbackEmail(e.target.value)}
                   className="text-xs px-3 py-2 border rounded w-full mb-3 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 />
                 <div className="flex gap-2">
-                  <button onClick={() => setShowFeedback(false)} className="flex-1 text-sm py-2 text-stone-500 hover:text-stone-700">Cancel</button>
-                  <button onClick={submitFeedback} className="flex-1 text-sm py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors">Send</button>
+                  <button type="button" onClick={() => setShowFeedback(false)} className="flex-1 text-sm py-2 text-stone-500 hover:text-stone-700">Cancel</button>
+                  <button type="button" onClick={submitFeedback} className="flex-1 text-sm py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors">Send</button>
                 </div>
               </>
             )}

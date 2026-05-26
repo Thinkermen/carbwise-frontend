@@ -76,10 +76,11 @@ export default function LogPage() {
             <div className="flex gap-1 justify-center">
               <input
                 type="email" placeholder="your@email.com"
+                aria-label="Email address"
                 value={emailInput} onChange={(e) => setEmailInput(e.target.value)}
                 className="text-xs px-2 py-1.5 border border-amber-300 rounded w-44 focus:outline-none focus:ring-1 focus:ring-amber-400"
               />
-              <button onClick={handleSetEmail}
+              <button type="button" onClick={handleSetEmail}
                 className="text-xs px-3 py-1.5 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors">
                 Save
               </button>
