@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { generateMealPlan, swapFood, fetchQuota, type MealPlan, type SwapResult, type QuotaInfo } from "@/lib/api";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { generateMealPlan, swapFood, type MealPlan, type SwapResult } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,29 +33,17 @@ const RITUAL_STEPS = [
   { text: "Finalizing your precision meal plan...", Icon: Sparkles },
 ];
 
-const stepProgressMap = [15, 30, 45, 60, 72, 82, 90, 95];
-const STEP_INTERVAL = 5000; // ms per step
-
 export default function Home() {
   const [plan, setPlan] = useState<MealPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
-  const [progressPercent, setProgressPercent] = useState(0);
-  const [streamPhase, setStreamPhase] = useState<string>("");
   const [emailUnlocked, setEmailUnlocked] = useState(false);
   const [waitlistEmail, setWaitlistEmail] = useState("");
-  const [quota, setQuota] = useState<QuotaInfo | null>(null);
 
   // Restore unlock state from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("carbwise_email");
     if (saved) { setWaitlistEmail(saved); setEmailUnlocked(true); }
-  }, []);
-
-  // Fetch quota on mount
-  useEffect(() => {
-    const email = localStorage.getItem("carbwise_email") || undefined;
-    fetchQuota(email).then(setQuota).catch(() => {});
   }, []);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState("");
@@ -68,21 +54,20 @@ export default function Home() {
   const handleUnlock = async () => {
     if (!waitlistEmail.includes("@")) return;
     try {
-      await fetch(`${API_BASE}/waitlist`, {
+      await fetch("http://localhost:8000/waitlist", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: waitlistEmail }),
       });
       localStorage.setItem("carbwise_email", waitlistEmail);
       setEmailUnlocked(true);
-      fetchQuota(waitlistEmail).then(setQuota).catch(() => {});
-      toast.success("99 generations unlocked! 🎉");
+      toast.success("Insights unlocked! You're on the early access list.");
     } catch { toast.error("Failed. Try again."); }
   };
 
   const submitFeedback = async () => {
     if (!feedbackMsg.trim()) return;
     try {
-      await fetch(`${API_BASE}/feedback`, {
+      await fetch("http://localhost:8000/feedback", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: feedbackMsg, email: feedbackEmail }),
       });
@@ -106,12 +91,16 @@ export default function Home() {
     return Math.round((effectiveGi * available) / 100 * 10) / 10;
   };
 
-  // Strip USDA brand names like "HEINEN'S - Tomato and Mozzarella..." → "Tomato and Mozzarella"
+  // Strip USDA brand names and duplicate descriptors
   const cleanFoodName = (name: string) => {
     if (!name) return "";
-    // Remove ALL-CAPS brand prefix: "BRAND NAME - actual food description"
-    const cleaned = name.replace(/^[A-Z][A-Z &'-]+ - /, "").trim();
-    // Truncate long names (brand database entries can be ridiculously long)
+    let cleaned = name
+      .replace(/Spike Blunter/gi, "")
+      .replace(/rawraw/gi, "raw")
+      .replace(/cookedcooked/gi, "cooked")
+      .replace(/^[A-Z][A-Z &'-]+ - /, "")  // strip ALL-CAPS brand prefix
+      .replace(/,+\s*$/, "")
+      .trim();
     return cleaned.length > 65 ? cleaned.slice(0, 62) + "..." : cleaned;
   };
 
@@ -165,61 +154,28 @@ export default function Home() {
     }
   };
 
+  // Rotate loading steps every 4 seconds
   useEffect(() => {
     if (loading) {
-      // Advance steps 0→6. Step 7 stays active until API returns.
+      setLoadingStep(0);
       timerRef.current = setInterval(() => {
-        setLoadingStep((prev) => {
-          const next = prev < RITUAL_STEPS.length - 1 ? prev + 1 : prev;
-          setProgressPercent(stepProgressMap[next]);
-          return next;
-        });
-      }, STEP_INTERVAL);
-      // Creep progress within final step: 90% → 95% over time
-      const creepTimer = setInterval(() => {
-        setLoadingStep((prev) => {
-          if (prev < RITUAL_STEPS.length - 1) return prev;
-          setProgressPercent((p) => Math.min(p + 0.12, stepProgressMap[prev]));
-          return prev;
-        });
-      }, 600);
-      (timerRef as any).creepCleanup = creepTimer;
+        setLoadingStep((prev) => (prev < RITUAL_STEPS.length - 1 ? prev + 1 : prev));
+      }, 4000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
-      if ((timerRef as any).creepCleanup) clearInterval((timerRef as any).creepCleanup);
-      setProgressPercent(100);
-      setLoadingStep(RITUAL_STEPS.length);
     }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if ((timerRef as any).creepCleanup) clearInterval((timerRef as any).creepCleanup);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [loading]);
 
   const handleGenerate = async () => {
-    if (quota && !quota.whitelisted && quota.remaining <= 0) {
-      toast.error(`今日生成次数已用完（${quota.limit}次/天），请明天再来`);
-      return;
-    }
-
-    setPlan(null);
-    setProgressPercent(0);
-    setLoadingStep(0);
-    setStreamPhase("");
     setLoading(true);
+    setPlan(null);
     try {
-      const email = localStorage.getItem("carbwise_email") || undefined;
-      const result = await generateMealPlan({ ...profile, email });
+      const result = await generateMealPlan(profile);
       setPlan(result);
       toast.success("Meal plan ready!");
-      fetchQuota(email).then(setQuota).catch(() => {});
-    } catch (e: any) {
-      if (e.message?.includes("429") || e.message?.includes("Too Many")) {
-        toast.error("今日生成次数已用完，请明天再来");
-        setQuota((prev) => prev ? { ...prev, remaining: 0 } : null);
-      } else {
-        toast.error("生成失败，请检查网络连接后重试");
-      }
+    } catch {
+      toast.error("Failed to generate. Check API connection.");
     } finally {
       setLoading(false);
     }
@@ -273,30 +229,9 @@ export default function Home() {
         </CardContent>
       </Card>
 
-      <Button
-        onClick={handleGenerate}
-        disabled={loading || (!!quota && !quota.whitelisted && quota.remaining <= 0)}
-        className="w-full bg-emerald-600 hover:bg-emerald-700"
-        size="lg"
-      >
-        {loading
-          ? "Generating..."
-          : (quota && !quota.whitelisted && quota.remaining <= 0)
-            ? "No Generations Left Today"
-            : "Generate Today's Meal Plan"}
+      <Button onClick={handleGenerate} disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700" size="lg">
+        {loading ? "Generating..." : "Generate Today's Meal Plan"}
       </Button>
-
-      {/* Quota display */}
-      {quota && (
-        <p className="text-xs text-center text-stone-400">
-          {quota.whitelisted
-            ? "Unlimited generations (whitelisted)"
-            : `${quota.remaining} of ${quota.limit} generations left today`}
-          {!quota.whitelisted && quota.limit === 3 && (
-            <> &mdash; <button type="button" onClick={() => document.getElementById("email-input")?.focus()} className="underline hover:text-emerald-600">submit email for 99/day</button></>
-          )}
-        </p>
-      )}
 
       {/* Loading Ritual */}
       {loading && (
@@ -304,29 +239,24 @@ export default function Home() {
           <CardContent className="py-6">
             <div className="flex items-center gap-2 mb-4">
               <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm font-medium text-emerald-700">
-                {streamPhase || "AI Precision Meal Planning"}
-              </span>
+              <span className="text-sm font-medium text-emerald-700">AI Precision Meal Planning</span>
             </div>
             <div className="space-y-3">
               {RITUAL_STEPS.map((step, i) => {
-                const isLast = i === RITUAL_STEPS.length - 1;
-                  const state = i < loadingStep ? "done" : i === loadingStep ? "active" : "pending";
-                  // Last step never shows "done" until loading completes
-                  const displayState = loading && isLast && state === "done" ? "active" : state;
+                const state = i < loadingStep ? "done" : i === loadingStep ? "active" : "pending";
                 return (
                   <div
                     key={i}
                     className={`flex items-center gap-3 text-sm transition-all duration-500 ${
-                      displayState === "pending" ? "opacity-30" : "opacity-100"
+                      state === "pending" ? "opacity-30" : "opacity-100"
                     }`}
                   >
                     <step.Icon className="w-4 h-4" />
-                    <span className={displayState === "active" ? "text-emerald-800 font-medium" : "text-stone-600"}>
+                    <span className={state === "active" ? "text-emerald-800 font-medium" : "text-stone-600"}>
                       {step.text}
                     </span>
-                    {displayState === "done" && <span className="text-emerald-500 ml-auto">✓</span>}
-                    {displayState === "active" && (
+                    {state === "done" && <span className="text-emerald-500 ml-auto">✓</span>}
+                    {state === "active" && (
                       <span className="ml-auto flex gap-1">
                         <span className="w-1 h-1 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                         <span className="w-1 h-1 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -337,14 +267,11 @@ export default function Home() {
                 );
               })}
             </div>
-            {/* Progress bar — phase-locked to loadingStep */}
+            {/* Progress bar */}
             <div className="mt-4 h-1.5 bg-emerald-200 rounded-full overflow-hidden">
               <div
-                className="h-full bg-emerald-500 rounded-full ease-out"
-                style={{
-                  width: `${loading ? progressPercent : 100}%`,
-                  transition: "width 4000ms cubic-bezier(0.4, 0, 0.2, 1)",
-                }}
+                className="h-full bg-emerald-500 rounded-full transition-all duration-1000 ease-out"
+                style={{ width: `${((loadingStep + 1) / RITUAL_STEPS.length) * 100}%` }}
               />
             </div>
           </CardContent>
@@ -409,11 +336,6 @@ export default function Home() {
                           {cleanFoodName(food.db_name || food.name)}
                           {isSpikeBlunter && <span className="text-[10px] ml-1 text-amber-600 font-medium" translate="no"><Zap className="w-3 h-3 inline" /> Spike Blunter</span>}
                         </span>
-                        {food.cooked_state && (food.cooked_state === "cooked" || food.cooked_state === "raw") && (
-                          <Badge variant="outline" className="text-[10px] px-1 py-0 ml-1 text-stone-500">
-                            {food.cooked_state}
-                          </Badge>
-                        )}
                         {food.hallucinated && (
                           <Badge variant="outline" className="text-[10px] px-1 py-0 ml-1 text-amber-700 border-amber-400">
                             auto-fixed
@@ -425,7 +347,6 @@ export default function Home() {
                         <span className="tabular-nums">{food.portion_g}g</span>
                         {food.fdc_id && (
                           <button
-                            type="button"
                             onClick={() => handleSwap(i, j, food.fdc_id)}
                             className="text-xs text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded px-1.5 py-0.5 transition-colors"
                             title="Swap for similar food"
@@ -465,15 +386,12 @@ export default function Home() {
                         <div className="flex gap-1 justify-center">
                           <input
                             type="email"
-                            id="email-input"
                             placeholder="your@email.com"
-                            aria-label="Email address"
                             value={waitlistEmail}
                             onChange={(e) => setWaitlistEmail(e.target.value)}
                             className="text-[11px] px-2 py-1 border border-amber-300 rounded w-36 focus:outline-none focus:ring-1 focus:ring-amber-400"
                           />
                           <button
-                            type="button"
                             onClick={handleUnlock}
                             className="text-[11px] px-2 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors"
                           >
@@ -493,7 +411,6 @@ export default function Home() {
 
       {/* Floating Feedback Button — mobile-friendly */}
       <button
-        type="button"
         onClick={() => setShowFeedback(true)}
         className="fixed bottom-6 right-6 z-50 w-12 h-12 bg-amber-500 text-white rounded-full shadow-lg hover:bg-amber-600 transition-all hover:scale-105 flex items-center justify-center text-lg"
         title="Send feedback"
@@ -525,14 +442,13 @@ export default function Home() {
                 <input
                   type="email"
                   placeholder="Email (optional)"
-                  aria-label="Feedback email address"
                   value={feedbackEmail}
                   onChange={(e) => setFeedbackEmail(e.target.value)}
                   className="text-xs px-3 py-2 border rounded w-full mb-3 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 />
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setShowFeedback(false)} className="flex-1 text-sm py-2 text-stone-500 hover:text-stone-700">Cancel</button>
-                  <button type="button" onClick={submitFeedback} className="flex-1 text-sm py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors">Send</button>
+                  <button onClick={() => setShowFeedback(false)} className="flex-1 text-sm py-2 text-stone-500 hover:text-stone-700">Cancel</button>
+                  <button onClick={submitFeedback} className="flex-1 text-sm py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors">Send</button>
                 </div>
               </>
             )}
