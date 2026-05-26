@@ -333,7 +333,7 @@ export default function Home() {
                     <li key={j} className={`flex justify-between text-sm items-center ${isSpikeBlunter ? "ring-1 ring-amber-200 bg-amber-50/50 rounded px-2 -mx-2 py-1" : ""}`}>
                       <div className="flex-1 min-w-0">
                         <span className={food.hallucinated ? "text-amber-600" : ""}>
-                          {cleanFoodName(food.db_name || food.name)}
+                          {cleanFoodName(food.ai_name || food.db_name || food.name)}
                           {isSpikeBlunter && <span className="text-[10px] ml-1 text-amber-600 font-medium" translate="no"><Zap className="w-3 h-3 inline" /> Spike Blunter</span>}
                         </span>
                         {food.hallucinated && (
