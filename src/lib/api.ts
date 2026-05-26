@@ -153,8 +153,9 @@ export async function* generateMealPlanStream(profile: {
   }
 }
 
-export async function fetchQuota(): Promise<QuotaInfo> {
-  const res = await fetch(`${API_BASE}/meal-plans/quota`);
+export async function fetchQuota(email?: string): Promise<QuotaInfo> {
+  const params = email ? `?email=${encodeURIComponent(email)}` : "";
+  const res = await fetch(`${API_BASE}/meal-plans/quota${params}`);
   if (!res.ok) throw new Error("Quota check failed");
   return res.json();
 }
@@ -166,6 +167,7 @@ export async function generateMealPlan(profile: {
   allergies?: string[];
   preferences?: string;
   cuisine?: string;
+  email?: string;
 }): Promise<MealPlan> {
   const res = await fetch(`${API_BASE}/meal-plans/generate`, {
     method: "POST",
