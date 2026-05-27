@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import Link from "next/link";
-import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const geistSans = Geist({ subsets: ["latin"] });
@@ -10,6 +10,9 @@ const geistSans = Geist({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "CarbWise — AI Meal Planner",
   description: "AI-powered meal planning and nutrition analysis for diabetes management",
+  other: {
+    "impact-site-verification": "9bda5f7e-f60f-4164-aa56-74b548d8f814",
+  },
 };
 
 const navItems = [
@@ -22,17 +25,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="h-full">
       <body className={`${geistSans.className} min-h-full bg-stone-50 text-stone-900`}>
-        <nav className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur">
+        <nav className="sticky top-0 z-50 border-b border-stone-200/60 bg-[#FBFBFA]/80 backdrop-blur">
           <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-3">
-            <Link href="/" className="text-lg font-bold text-emerald-700">
-              CarbWise
+            <Link href="/" className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-900" />
+              <span className="text-lg font-bold tracking-[-0.02em] text-stone-800">CarbWise</span>
             </Link>
             <div className="flex gap-4 text-sm font-medium">
               {navItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="text-stone-600 hover:text-emerald-700 transition-colors"
+                  className="text-stone-400 hover:text-stone-700 transition-colors"
                 >
                   {item.label}
                 </Link>
@@ -42,7 +46,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </nav>
         <main className="mx-auto max-w-lg px-4 py-6">{children}</main>
         <Toaster />
-        <Analytics />
+        <Script
+          src="https://utt.impactcdn.com/P-A7349938-17af-46ad-aecd-50e1bac1b8971.js"
+          strategy="afterInteractive"
+        />
+        <Script id="impact-init" strategy="afterInteractive">
+          {`impactStat('transformLinks');impactStat('trackImpression');`}
+        </Script>
       </body>
     </html>
   );

@@ -13,13 +13,28 @@ import {
   BarChart3, Microscope, FolderSearch, ShieldCheck, Scale,
   Target, RefreshCw, Sparkles, Lightbulb, Lock, ChevronRight,
   MessageCircle, Zap, ArrowRightLeft,
+  Coffee, Apple, Fish, UtensilsCrossed, Cookie, ShoppingCart,
 } from "lucide-react";
 
-const MEAL_COLORS: Record<string, string> = {
-  breakfast: "bg-amber-100 text-amber-900",
-  lunch: "bg-emerald-100 text-emerald-900",
-  dinner: "bg-indigo-100 text-indigo-900",
-  snack: "bg-rose-100 text-rose-900",
+const MEAL_BADGE: Record<string, string> = {
+  breakfast: "bg-[#FFF5F0] text-[#E05A16]",
+  lunch: "bg-[#ECFDF5] text-[#059669]",
+  dinner: "bg-[#ECFDF5] text-[#059669]",
+  snack: "bg-[#F5F3FF] text-[#7C3AED]",
+};
+
+const MEAL_ICONS: Record<string, React.ComponentType<{className?: string}>> = {
+  breakfast: Coffee,
+  lunch: UtensilsCrossed,
+  dinner: Fish,
+  snack: Cookie,
+};
+
+const MEAL_ICON_BG: Record<string, string> = {
+  breakfast: "bg-[#FFFDF5]",
+  lunch: "bg-[#FFFDF5]",
+  dinner: "bg-[#FFFDF5]",
+  snack: "bg-[#FFFDF5]",
 };
 
 const RITUAL_STEPS = [
@@ -61,6 +76,7 @@ export default function Home() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingPlan = useRef<MealPlan | null>(null);
   const streamDone = useRef(false);
+  const revealed = useRef(false);
 
   const handleUnlock = async () => {
     if (!waitlistEmail.includes("@")) return;
@@ -103,19 +119,34 @@ export default function Home() {
     return Math.round((effectiveGi * available) / 100 * 10) / 10;
   };
 
-  // Strip USDA brand names and duplicate descriptors
+  // Strip USDA boilerplate, AI artifacts, and redundant descriptors for clean display
   const cleanFoodName = (name: string) => {
     if (!name) return "";
     let cleaned = name
-      .replace(/Spike Blunter/gi, "")
+      // Strip "Spike Blunter" if AI accidentally appended it to food name
+      .replace(/\s*Spike\s+Blunter\b\s*/gi, "")
+      // Strip USDA food distribution parentheticals
+      .replace(/\s*\((?:Includes|incl\.?)\s+foods?\s+for\s+USDA'?s?\s+Food\s+Distribution\s+Program\)\s*/gi, "")
+      .replace(/\s*\([^)]*(?:USDA|Food Distribution|foods for)[^)]*\)\s*/gi, "")
+      // Strip redundant descriptors: "without salt", vitamin declarations, "NS as to form"
+      .replace(/,?\s*without\s+(?:added\s+)?salt(?:\s+added)?\b\s*/gi, "")
+      .replace(/,?\s*without\s+added\s+vitamin\s+[^,]*/gi, "")
+      .replace(/,?\s*NS\s+as\s+to\s+(?:form|type)\b[^,]*/gi, "")
+      // Strip "unsweetened" (redundant for frozen fruit)
+      .replace(/,?\s*unsweetened\b\s*/gi, " ")
+      // Fix "rawraw" / "cookedcooked" duplication artifacts
       .replace(/rawraw/gi, "raw")
       .replace(/cookedcooked/gi, "cooked")
-      .replace(/^[A-Z][A-Z &'-]+ - /, "")  // strip ALL-CAPS brand prefix
-      .replace(/,+\s*$/, "")
+      // Strip ALL-CAPS brand prefix
+      .replace(/^[A-Z][A-Z &'-]+ - /, "")
+      // Collapse repeated commas/spaces from all the stripping above
+      .replace(/,\s*,/g, ",")
+      .replace(/\s{2,}/g, " ")
+      .replace(/,\s*$/g, "")
+      .replace(/^\s*,\s*/g, "")
       .trim();
     return cleaned.length > 65 ? cleaned.slice(0, 62) + "..." : cleaned;
   };
-
   const handleSwap = async (mealIdx: number, foodIdx: number, currentFdcId?: number) => {
     if (!currentFdcId || !plan) return;
     try {
@@ -173,14 +204,15 @@ export default function Home() {
       setProgressPercent(0);
       pendingPlan.current = null;
       streamDone.current = false;
+      revealed.current = false;
       timerRef.current = setInterval(() => {
         setLoadingStep((prev) => {
           const next = prev < RITUAL_STEPS.length - 1 ? prev + 1 : prev;
           setProgressPercent(Math.round((next / RITUAL_STEPS.length) * 100));
-          // Reveal plan when we reach the final step AND stream is done
-          if (next === RITUAL_STEPS.length - 1 && streamDone.current && pendingPlan.current) {
+          if (next === RITUAL_STEPS.length - 1 && streamDone.current && pendingPlan.current && !revealed.current) {
+            revealed.current = true;
             setPlan(pendingPlan.current);
-            toast.success("Meal plan ready!");
+            toast.success("Meal plan ready!", { style: { background: "#EAF6ED", color: "#2E7D32", border: "none" } });
             setLoading(false);
           }
           return next;
@@ -239,20 +271,20 @@ export default function Home() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">AI Meal Planner</h1>
-        <p className="text-stone-500 mt-1">
-          Personalized diabetes-friendly meal plans based on USDA nutrition data.
-        </p>
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] text-stone-400 flex items-center gap-1.5">
+          Tuesday, May 27 &middot; Personalized for you
+        </span>
+        <span className="text-[11px] font-semibold text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded-full tracking-[0.02em]">ADA 2026</span>
       </div>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Your Profile</CardTitle></CardHeader>
+      <Card className="shadow-[0_10px_40px_rgba(0,0,0,0.02)] border-0">
+        <CardHeader className="pb-3"><CardTitle className="text-base font-semibold tracking-[-0.01em] text-[#1A1A1A]">Your Profile</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-medium text-stone-500">Diabetes Type</label>
+            <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Diabetes Type</label>
             <Select value={profile.diabetes_type} onValueChange={(v) => v && setProfile({ ...profile, diabetes_type: v })}>
-              <SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="mt-1.5 w-full !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20 [&>svg]:text-stone-400"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Type 1">Type 1</SelectItem>
                 <SelectItem value="Type 2">Type 2</SelectItem>
@@ -262,9 +294,9 @@ export default function Home() {
             </Select>
           </div>
           <div>
-            <label className="text-xs font-medium text-stone-500">Cuisine</label>
+            <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Cuisine</label>
             <Select value={profile.cuisine} onValueChange={(v) => v && setProfile({ ...profile, cuisine: v })}>
-              <SelectTrigger className="mt-1 w-full"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="mt-1.5 w-full !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20 [&>svg]:text-stone-400"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="American">American</SelectItem>
                 <SelectItem value="Mediterranean">Mediterranean</SelectItem>
@@ -275,12 +307,12 @@ export default function Home() {
             </Select>
           </div>
           <div>
-            <label className="text-xs font-medium text-stone-500">Carb Target (g/day)</label>
-            <Input type="number" value={profile.carb_target_g} onChange={(e) => setProfile({ ...profile, carb_target_g: +e.target.value })} className="mt-1" />
+            <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Carb Target (g/day)</label>
+            <Input type="number" value={profile.carb_target_g} onChange={(e) => setProfile({ ...profile, carb_target_g: +e.target.value })} className="mt-1.5 !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20" />
           </div>
           <div>
-            <label className="text-xs font-medium text-stone-500">Calorie Target (kcal)</label>
-            <Input type="number" value={profile.calorie_target} onChange={(e) => setProfile({ ...profile, calorie_target: +e.target.value })} className="mt-1" />
+            <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Calorie Target (kcal)</label>
+            <Input type="number" value={profile.calorie_target} onChange={(e) => setProfile({ ...profile, calorie_target: +e.target.value })} className="mt-1.5 !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20" />
           </div>
         </CardContent>
       </Card>
@@ -288,7 +320,7 @@ export default function Home() {
       <Button
         onClick={handleGenerate}
         disabled={loading || (!!quota && !quota.whitelisted && quota.remaining <= 0)}
-        className="w-full bg-emerald-600 hover:bg-emerald-700" size="lg"
+        className="w-full bg-[#133D2D] hover:bg-[#1A4E3B] rounded-full py-3.5 text-base font-semibold transition-all duration-300"
       >
         {loading
           ? "Generating..."
@@ -298,7 +330,7 @@ export default function Home() {
       </Button>
 
       {quota && (
-        <p className="text-xs text-center text-stone-400">
+        <p className="text-[11px] text-center text-[#A3A39C]">
           {quota.whitelisted
             ? "Unlimited generations (whitelisted)"
             : `${quota.remaining} of ${quota.limit} generations left today`}
@@ -310,12 +342,12 @@ export default function Home() {
 
       {/* Loading Ritual */}
       {loading && (
-        <Card className="border-emerald-200 bg-emerald-50/50 overflow-hidden">
+        <Card className="border-stone-200/60 bg-[#F5F7F4] shadow-[0_4px_24px_rgba(0,0,0,0.02)] overflow-hidden">
           <CardContent className="py-6">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm font-medium text-emerald-700">
-                {streamPhase || "AI Precision Meal Planning"}
+            <div className="flex items-center gap-2.5 mb-5">
+              <div className="w-5 h-5 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm font-medium text-stone-600">
+                {streamPhase || "Preparing your meal plan..."}
               </span>
             </div>
             <div className="space-y-3">
@@ -325,29 +357,28 @@ export default function Home() {
                   <div
                     key={i}
                     className={`flex items-center gap-3 text-sm transition-all duration-500 ${
-                      state === "pending" ? "opacity-30" : "opacity-100"
+                      state === "pending" ? "opacity-25" : "opacity-100"
                     }`}
                   >
-                    <step.Icon className="w-4 h-4" />
-                    <span className={state === "active" ? "text-emerald-800 font-medium" : "text-stone-600"}>
+                    <step.Icon className={`w-4 h-4 ${state === "active" ? "text-emerald-700" : state === "done" ? "text-emerald-500" : "text-stone-400"}`} />
+                    <span className={state === "active" ? "text-stone-700 font-medium" : "text-stone-500"}>
                       {step.text}
                     </span>
-                    {state === "done" && <span className="text-emerald-500 ml-auto">✓</span>}
+                    {state === "done" && <span className="text-emerald-500 ml-auto text-xs">✓</span>}
                     {state === "active" && (
                       <span className="ml-auto flex gap-1">
-                        <span className="w-1 h-1 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <span className="w-1 h-1 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <span className="w-1 h-1 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                        <span className="w-1 h-1 bg-emerald-600 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <span className="w-1 h-1 bg-emerald-600 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <span className="w-1 h-1 bg-emerald-600 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                       </span>
                     )}
                   </div>
                 );
               })}
             </div>
-            {/* Progress bar */}
-            <div className="mt-4 h-1.5 bg-emerald-200 rounded-full overflow-hidden">
+            <div className="mt-5 h-1 bg-stone-200 rounded-full overflow-hidden">
               <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-1000 ease-out"
+                className="h-full bg-emerald-700 rounded-full transition-all duration-1000 ease-out"
                 style={{ width: `${((loadingStep + 1) / RITUAL_STEPS.length) * 100}%` }}
               />
             </div>
@@ -359,19 +390,19 @@ export default function Home() {
         <div className="space-y-4">
           {/* GL Progress Bar with gamification */}
           {plan.total_estimated_gl != null && (
-            <Card className="border-emerald-200 bg-emerald-50/60">
-              <CardContent className="py-3">
+            <Card className="border-stone-200/60 bg-[#F5F7F4] shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
+              <CardContent className="py-3 px-4">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-medium text-emerald-800">Daily Glycemic Load</span>
                   <span className="text-xs font-bold text-emerald-700 tabular-nums">
                     {plan.total_estimated_gl} / 120
                   </span>
                 </div>
-                <div className="h-2 bg-emerald-200 rounded-full overflow-hidden">
+                <div className="h-2 bg-emerald-100 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-1000 ${
-                      plan.total_estimated_gl <= 80 ? "bg-emerald-500" :
-                      plan.total_estimated_gl <= 100 ? "bg-yellow-500" : "bg-red-500"
+                      plan.total_estimated_gl <= 80 ? "bg-emerald-600" :
+                      plan.total_estimated_gl <= 100 ? "bg-amber-500" : "bg-red-400"
                     }`}
                     style={{ width: `${Math.min((plan.total_estimated_gl / 120) * 100, 100)}%` }}
                   />
@@ -386,91 +417,100 @@ export default function Home() {
             </Card>
           )}
 
-          <div className="flex gap-2 text-sm flex-wrap">
-            <Badge variant="outline" className="text-emerald-700 border-emerald-300">{plan.total_carb_g}g carbs</Badge>
-            {plan.total_protein_g && <Badge variant="outline" className="text-blue-700 border-blue-300">{plan.total_protein_g}g protein</Badge>}
-            {plan.total_fat_g && <Badge variant="outline" className="text-amber-700 border-amber-300">{plan.total_fat_g}g fat</Badge>}
+          <div className="flex gap-2.5 flex-wrap">
+            <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#EAF6ED] text-[#2E7D32] flex-1 min-w-[72px]">
+              <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plan.total_carb_g}<span className="text-[11px] font-medium">g</span></span>
+              <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Carbs</span>
+            </div>
+            {plan.total_protein_g != null && (
+              <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#E8F1FC] text-[#1565C0] flex-1 min-w-[72px]">
+                <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plan.total_protein_g}<span className="text-[11px] font-medium">g</span></span>
+                <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Protein</span>
+              </div>
+            )}
+            {plan.total_fat_g != null && (
+              <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#FFF3E0] text-[#E65100] flex-1 min-w-[72px]">
+                <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plan.total_fat_g}<span className="text-[11px] font-medium">g</span></span>
+                <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Fat</span>
+              </div>
+            )}
+            <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#FFEBEE] text-[#C62828] flex-1 min-w-[72px]">
+              <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plan.total_calories ?? "—"}</span>
+              <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Kcal</span>
+            </div>
           </div>
-          {plan.meals?.map((meal, i) => (
-            <Card key={i} className="animate-meal-reveal" style={{ animationDelay: `${i * 0.2}s` }}>
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-sm capitalize">{meal.type}</CardTitle>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${MEAL_COLORS[meal.type] || "bg-stone-100 text-stone-700"}`}>
-                    {meal.name}
-                  </span>
+          {plan.meals?.map((meal, i) => {
+            const IconComp = MEAL_ICONS[meal.type] || Cookie;
+            return (
+            <Card key={i} className="animate-meal-reveal shadow-[0_4px_24px_rgba(0,0,0,0.02)] border-stone-200/60" style={{ animationDelay: `${i * 0.2}s` }}>
+              <CardContent className="pt-5 pb-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 bg-[#FFFDF5]">
+                    <IconComp className="w-5 h-5 text-stone-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${MEAL_BADGE[meal.type] || "bg-stone-100 text-stone-600"}`}>{meal.type}</span>
+                    </div>
+                    <div className="text-lg font-bold tracking-[-0.02em] text-[#1A1A1A] leading-tight">{meal.name}</div>
+                  </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
+                <ul className="space-y-0.5">
                   {meal.foods?.map((food, j) => {
                     const isSpikeBlunter = meal.spike_blunter_pair?.includes(food.name) ||
                                           meal.spike_blunter_pair?.some(p => (food.db_name || food.name).toLowerCase().includes(p.toLowerCase()));
+                    const gl = food.estimated_gl;
                     return (
-                    <li key={j} className={`flex justify-between text-sm items-center ${isSpikeBlunter ? "ring-1 ring-amber-200 bg-amber-50/50 rounded px-2 -mx-2 py-1" : ""}`}>
-                      <div className="flex-1 min-w-0">
-                        <span className={food.hallucinated ? "text-amber-600" : ""}>
+                    <li key={j} className={`flex justify-between text-sm items-center px-3 py-2.5 rounded-[10px] hover:bg-stone-50/50 transition-colors ${isSpikeBlunter ? "bg-amber-50/20" : ""}`}>
+                      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isSpikeBlunter ? "bg-[#E05A16]" : "bg-stone-300"}`} />
+                        <span className="text-[14px] font-medium text-[#2D2D2D] truncate" title={food.db_name || food.name}>
                           {cleanFoodName(food.ai_name || food.db_name || food.name)}
-                          {isSpikeBlunter && <span className="text-[10px] ml-1 text-amber-600 font-medium" translate="no"><Zap className="w-3 h-3 inline" /> Spike Blunter</span>}
                         </span>
                         {food.hallucinated && (
-                          <Badge variant="outline" className="text-[10px] px-1 py-0 ml-1 text-amber-700 border-amber-400">
+                          <Badge variant="outline" className="text-[10px] px-1 py-0 ml-0.5 text-amber-700 border-amber-400 flex-shrink-0">
                             auto-fixed
                           </Badge>
                         )}
                       </div>
-                      <span className="text-stone-500 flex gap-1 items-center shrink-0">
-                        {food.estimated_gl != null && <Badge variant="secondary" className="text-xs">GL {food.estimated_gl}</Badge>}
-                        <span className="tabular-nums">{food.portion_g}g</span>
-                        {food.fdc_id && (
-                          <button
-                            onClick={() => handleSwap(i, j, food.fdc_id)}
-                            className="text-xs text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded px-1.5 py-0.5 transition-colors"
-                            title="Swap for similar food"
-                          >
-                            <ArrowRightLeft className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                      <span className="flex gap-3 items-center shrink-0 text-xs tabular-nums">
+                        {gl != null && <span className="font-semibold text-[#2D7A57]">GL {gl}</span>}
+                        <span className="font-normal text-[#8C8C85]">{food.portion_g}g</span>
                       </span>
                     </li>
                     );
                   })}
                 </ul>
 
-                {/* AI Insight — progressive disclosure with paywall */}
+                {/* AI Insight */}
                 {meal.ai_insight && (
                   emailUnlocked ? (
-                    <details className="mt-3 group">
-                      <summary className="text-xs text-amber-700 hover:text-amber-900 cursor-pointer font-medium list-none flex items-center gap-1">
-                        <ChevronRight className="w-3.5 h-3.5 transition-transform group-open:rotate-90" />
-                        <Lightbulb className="w-3.5 h-3.5 inline" /> Why this works
-                      </summary>
-                      <p className="mt-2 text-xs text-stone-600 leading-relaxed pl-5 border-l-2 border-amber-200">
-                        {meal.ai_insight}
-                      </p>
-                    </details>
+                    <div className="mt-3 p-3.5 bg-[#F4F7F5] rounded-xl text-[13px] text-[#2D2D2D] leading-relaxed flex gap-2.5">
+                      <span className="text-base flex-shrink-0 mt-px">💡</span>
+                      <span>{meal.ai_insight}</span>
+                    </div>
                   ) : (
                     <details className="mt-3 group/blur">
-                      <summary className="text-xs text-stone-400 hover:text-amber-700 cursor-pointer list-none flex items-center gap-1">
-                        <span className="transition-transform group-open/blur:rotate-90">▶</span>
-                        <Lock className="w-3 h-3 inline" /> Unlock Insights
+                      <summary className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-[#F8F8F7] text-[#8C8C85] rounded-xl text-[13px] font-medium hover:bg-[#EAF6ED] hover:text-[#2E7D32] transition-colors cursor-pointer list-none">
+                        <Lock className="w-3.5 h-3.5" /> Unlock insight — free with email
                       </summary>
-                      <div className="mt-2 p-2 bg-amber-50 rounded border border-amber-200 space-y-1.5 text-center">
-                        <div className="blur-[2px] select-none pointer-events-none opacity-25 text-[11px] text-stone-500 leading-snug line-clamp-2">
+                      <div className="mt-2.5 p-3 bg-stone-50 rounded-xl border border-stone-100 space-y-2 text-center">
+                        <div className="blur-[2px] select-none pointer-events-none opacity-20 text-[11px] text-stone-500 leading-snug line-clamp-2">
                           {meal.ai_insight}
                         </div>
-                        <p className="text-[11px] font-medium text-stone-700">Unlock AI Nutri-Insights — free</p>
-                        <div className="flex gap-1 justify-center">
+                        <p className="text-[11px] font-medium text-stone-600">Enter your email to unlock</p>
+                        <div className="flex gap-1.5 justify-center">
                           <input
                             type="email"
+                            id={`unlock-${i}`}
                             placeholder="your@email.com"
                             value={waitlistEmail}
                             onChange={(e) => setWaitlistEmail(e.target.value)}
-                            className="text-[11px] px-2 py-1 border border-amber-300 rounded w-36 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                            className="text-[11px] px-2.5 py-1.5 border border-stone-200 rounded-lg w-36 focus:outline-none focus:ring-1 focus:ring-emerald-300 bg-white"
                           />
                           <button
                             onClick={handleUnlock}
-                            className="text-[11px] px-2 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors"
+                            className="text-[11px] px-3 py-1.5 bg-emerald-800 text-white rounded-lg hover:bg-emerald-900 transition-colors font-medium"
                           >
                             Unlock
                           </button>
@@ -482,14 +522,29 @@ export default function Home() {
                 )}
               </CardContent>
             </Card>
-          ))}
+          )})}
         </div>
+      )}
+
+      {plan && (
+        <a
+          href={`https://www.walmart.com/search?q=${encodeURIComponent(
+            Array.from(new Set(
+              plan.meals.flatMap(m => m.foods?.map(f => cleanFoodName(f.ai_name || f.db_name || f.name)) || [])
+            )).join(" ")
+          )}`}
+          target="_blank" rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2.5 w-full py-3.5 px-4 bg-[#0071DC] text-white rounded-full text-sm font-semibold hover:bg-[#005BB5] transition-all duration-300 shadow-[0_4px_24px_rgba(0,113,220,0.15)] hover:shadow-[0_8px_30px_rgba(0,113,220,0.22)]"
+        >
+          <ShoppingCart className="w-4 h-4" />
+          Order Ingredients via Walmart
+        </a>
       )}
 
       {/* Floating Feedback Button — mobile-friendly */}
       <button
         onClick={() => setShowFeedback(true)}
-        className="fixed bottom-6 right-6 z-50 w-12 h-12 bg-amber-500 text-white rounded-full shadow-lg hover:bg-amber-600 transition-all hover:scale-105 flex items-center justify-center text-lg"
+        className="fixed bottom-6 right-6 z-50 w-11 h-11 bg-emerald-800 text-white rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.1)] hover:bg-emerald-900 transition-all hover:scale-105 flex items-center justify-center"
         title="Send feedback"
       >
         <MessageCircle className="w-5 h-5" />
@@ -521,11 +576,11 @@ export default function Home() {
                   placeholder="Email (optional)"
                   value={feedbackEmail}
                   onChange={(e) => setFeedbackEmail(e.target.value)}
-                  className="text-xs px-3 py-2 border rounded w-full mb-3 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  className="text-xs px-3 py-2 border border-stone-200 rounded-lg w-full mb-3 focus:outline-none focus:ring-1 focus:ring-emerald-300"
                 />
                 <div className="flex gap-2">
-                  <button onClick={() => setShowFeedback(false)} className="flex-1 text-sm py-2 text-stone-500 hover:text-stone-700">Cancel</button>
-                  <button onClick={submitFeedback} className="flex-1 text-sm py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors">Send</button>
+                  <button onClick={() => setShowFeedback(false)} className="flex-1 text-sm py-2 text-stone-400 hover:text-stone-600">Cancel</button>
+                  <button onClick={submitFeedback} className="flex-1 text-sm py-2 bg-emerald-800 text-white rounded-lg hover:bg-emerald-900 transition-colors font-medium">Send</button>
                 </div>
               </>
             )}

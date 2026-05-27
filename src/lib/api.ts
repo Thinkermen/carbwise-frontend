@@ -38,6 +38,7 @@ export interface MealPlan {
   total_carb_g: number;
   total_protein_g?: number;
   total_fat_g?: number;
+  total_calories?: number;
   total_estimated_gl?: number;
   meal_prep_tip?: string;
   meals: Meal[];
