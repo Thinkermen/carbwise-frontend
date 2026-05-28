@@ -112,6 +112,17 @@ export default function Home() {
     cuisine: "American",
   });
 
+  const handleDiabetesTypeChange = (v: string) => {
+    const defaults: Record<string, { carb: number; cal: number }> = {
+      "Type 1": { carb: 180, cal: 2000 },
+      "Type 2": { carb: 150, cal: 1800 },
+      "Prediabetes": { carb: 130, cal: 1600 },
+      "Gestational": { carb: 160, cal: 2000 },
+    };
+    const d = defaults[v] || { carb: 150, cal: 1800 };
+    setProfile(p => ({ ...p, diabetes_type: v, carb_target_g: d.carb, calorie_target: d.cal }));
+  };
+
   // Helper: calculate GL from carb, fiber, GI
   const calcGL = (carb: number, fiber: number, gi?: number | null) => {
     const available = Math.max(carb - fiber, 0);
@@ -283,7 +294,7 @@ export default function Home() {
         <CardContent className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Diabetes Type</label>
-            <Select value={profile.diabetes_type} onValueChange={(v) => v && setProfile({ ...profile, diabetes_type: v })}>
+            <Select value={profile.diabetes_type} onValueChange={(v) => v && handleDiabetesTypeChange(v)}>
               <SelectTrigger className="mt-1.5 w-full !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20 [&>svg]:text-stone-400"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Type 1">Type 1</SelectItem>
@@ -453,6 +464,11 @@ export default function Home() {
                       <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${MEAL_BADGE[meal.type] || "bg-stone-100 text-stone-600"}`}>{meal.type}</span>
                     </div>
                     <div className="text-lg font-bold tracking-[-0.02em] text-[#1A1A1A] leading-tight">{meal.name}</div>
+                    {meal.foods && (
+                      <p className="text-[11px] text-[#2E7D32] font-medium mt-1">
+                        {Math.round(meal.foods.reduce((sum, f) => sum + (f.nutrition?.carb_g || 0), 0))}g carbs this meal
+                      </p>
+                    )}
                   </div>
                 </div>
                 <ul className="space-y-0.5">
