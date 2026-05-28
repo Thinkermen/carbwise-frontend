@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { generateMealPlanStream, fetchQuota, swapFood, type MealPlan, type SwapResult, type QuotaInfo } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,7 +14,7 @@ import {
   BarChart3, Microscope, FolderSearch, ShieldCheck, Scale,
   Target, RefreshCw, Sparkles, Lightbulb, Lock, ChevronRight,
   MessageCircle, Zap, ArrowRightLeft,
-  Coffee, Apple, Fish, UtensilsCrossed, Cookie, ShoppingCart,
+  Coffee, Apple, Fish, UtensilsCrossed, Cookie, ShoppingCart, Printer,
 } from "lucide-react";
 
 const MEAL_BADGE: Record<string, string> = {
@@ -140,6 +141,53 @@ export default function Home() {
       }
       return next;
     });
+  };
+
+  // Grocery aisle categorization — keyword-based routing
+  const GROCERY_RULES: [string[], string][] = [
+    [["blueberr", "strawberr", "raspberr", "blackberr", "frozen", "mixed fruit", "mixed berry"], "Frozen"],
+    [["beef", "steak", "ground beef", "chicken breast", "chicken thigh", "turkey", "pork", "lamb", "veal", "bacon", "sausage", "deli meat", "ham "], "Meat & Poultry"],
+    [["salmon", "tuna", "cod", "tilapia", "shrimp", "fish", "seafood", "sardine", "anchov", "oyster", "clam", "mussel", "crab", "lobster"], "Seafood"],
+    [["milk", "yogurt", "cheese", "cottage", "cream", "butter", "sour cream", "mozzarella", "cheddar", "parmesan", "feta", "ricotta", "egg"], "Dairy & Eggs"],
+    [["bread", "roll", "bun", "bagel", "tortilla", "wrap", "pita", "naan", "english muffin", "croissant"], "Bakery"],
+    [["rice", "pasta", "oat", "cereal", "quinoa", "barley", "couscous", "noodle", "flour", "cornmeal", "grits"], "Grains & Pasta"],
+    [["oil", "vinegar", "soy sauce", "mustard", "ketchup", "mayo", "dressing", "salsa", "hot sauce", "worcestershire", "spice", "cinnamon", "cumin", "paprika", "oregano", "basil", "thyme", "rosemary", "garlic powder", "onion powder", "pepper", "salt", "herb", "seasoning", "vanilla", "sugar", "honey", "syrup"], "Oils & Condiments"],
+    [["nut", "almond", "walnut", "pecan", "cashew", "peanut", "seed", "sunflower", "pumpkin", "chia", "flax", "peanut butter", "almond butter"], "Nuts & Seeds"],
+    [["canned", "can", "jarred", "olive", "capers", "pickle", "artichoke", "broth", "stock", "coconut milk"], "Canned & Jarred"],
+    [["tofu", "tempeh", "edamame", "soy", "miso"], "Plant-Based Protein"],
+  ];
+
+  const categorizeFood = (name: string): string => {
+    const lower = name.toLowerCase();
+    for (const [keywords, section] of GROCERY_RULES) {
+      if (keywords.some(kw => lower.includes(kw))) return section;
+    }
+    // Fallback heuristics
+    if (/\b(carrot|broccoli|spinach|lettuce|tomato|potato|onion|pepper|cucumber|zucchini|squash|cauliflower|bean|pea|corn|celery|mushroom|avocado|cabbage|kale|asparagus|eggplant|radish|beet|turnip|parsnip|okra|artichoke)\b/.test(lower)) return "Produce";
+    if (/\b(apple|banana|orange|grape|melon|pineapple|peach|pear|plum|kiwi|mango|papaya|cherry|lemon|lime|grapefruit|watermelon|cantaloupe|honeydew|nectarine|apricot|fig|date|raisin|prune|cranberry|pomegranate|guava|lychee|passion|persimmon|tangerine|clementine|blueberr|strawberr|raspberr|blackberr)\b/.test(lower)) return "Produce";
+    return "Pantry";
+  };
+
+  const buildShoppingList = (plan: MealPlan) => {
+    const items: Record<string, { totalG: number; portions: { meal: string; amount: string }[] }> = {};
+    plan.meals.forEach(meal => {
+      meal.foods?.forEach(food => {
+        const rawName = food.db_name || food.name || "Unknown";
+        const key = cleanFoodName(rawName).toLowerCase().replace(/\s+/g, " ").trim();
+        if (!items[key]) items[key] = { totalG: 0, portions: [] };
+        items[key].totalG += food.portion_g || 0;
+        items[key].portions.push({ meal: meal.type, amount: `${food.portion_g || 0}g` });
+      });
+    });
+
+    const sections: Record<string, { name: string; totalG: number; portions: { meal: string; amount: string }[] }[]> = {};
+    Object.entries(items).forEach(([name, data]) => {
+      const section = categorizeFood(name);
+      if (!sections[section]) sections[section] = [];
+      sections[section].push({ name, ...data });
+    });
+
+    return sections;
   };
 
   // Helper: calculate GL from carb, fiber, GI
@@ -604,12 +652,85 @@ export default function Home() {
       )}
 
       {plan && (
-        <div
-          className="flex items-center justify-center gap-2.5 w-full py-3.5 px-4 bg-[#F8F8F7] text-[#A3A39C] rounded-full text-sm font-semibold cursor-not-allowed"
-        >
-          <ShoppingCart className="w-4 h-4" />
-          Grocery Delivery — Coming Soon
-        </div>
+        <>
+          <button
+            onClick={() => window.print()}
+            className="no-print flex items-center justify-center gap-2.5 w-full py-3.5 px-4 bg-[#133D2D] text-white rounded-full text-sm font-semibold hover:bg-[#1A4E3B] transition-all duration-300 shadow-[0_4px_24px_rgba(0,0,0,0.08)]"
+          >
+            <Printer className="w-4 h-4" />
+            Print Shopping List
+          </button>
+
+          {/* Print-only shopping list — rendered via portal at body level */}
+          {typeof document !== "undefined" && createPortal(
+          <div className="print-only hidden">
+            {(() => {
+              const sections = buildShoppingList(plan);
+              const sectionOrder = ["Produce", "Meat & Poultry", "Seafood", "Dairy & Eggs", "Bakery", "Grains & Pasta", "Nuts & Seeds", "Oils & Condiments", "Canned & Jarred", "Plant-Based Protein", "Frozen", "Pantry"];
+              const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+              return (
+                <div className="p-8 max-w-4xl mx-auto font-sans text-[#1A1A1A]">
+                  {/* Header */}
+                  <div className="text-center mb-8 pb-6 border-b-2 border-[#133D2D]">
+                    <h1 className="text-2xl font-bold tracking-tight text-[#133D2D] mb-1">CarbWise Shopping List</h1>
+                    <p className="text-sm text-stone-500">{today} · {plan.total_carb_g}g carb target · {plan.total_calories} kcal</p>
+                  </div>
+
+                  {/* Daily Menu Summary */}
+                  <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-stone-400 mb-4">Today's Menu</h2>
+                  <div className="grid grid-cols-2 gap-3 mb-10">
+                    {plan.meals.map(meal => {
+                      const carbs = Math.round(meal.foods?.reduce((s, f) => s + (f.nutrition?.carb_g || 0), 0) || 0);
+                      return (
+                        <div key={meal.type} className="flex items-start gap-2 text-sm">
+                          <span className="text-[10px] font-bold uppercase text-stone-400 w-14 flex-shrink-0 mt-0.5">{meal.type === "snack_1" ? "Snack 1" : meal.type === "snack_2" ? "Snack 2" : meal.type}</span>
+                          <span className="font-medium">{meal.name}</span>
+                          <span className="text-stone-400 text-xs ml-auto">{carbs}g</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Grocery List by Section */}
+                  <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-stone-400 mb-4">Shopping List by Aisle</h2>
+                  {sectionOrder.map(section => {
+                    const items = sections[section];
+                    if (!items || items.length === 0) return null;
+                    return (
+                      <div key={section} className="mb-6 break-inside-avoid">
+                        <h3 className="text-xs font-bold uppercase tracking-[0.08em] text-[#133D2D] border-b border-stone-200 pb-1 mb-2">{section}</h3>
+                        <ul className="space-y-1">
+                          {items.sort((a, b) => a.name.localeCompare(b.name)).map(item => {
+                            const displayName = item.name.charAt(0).toUpperCase() + item.name.slice(1);
+                            const totalStr = item.totalG >= 1000
+                              ? `${(item.totalG / 1000).toFixed(1)}kg`
+                              : `${Math.round(item.totalG)}g`;
+                            const usCups = item.totalG >= 200 ? `(~${Math.round(item.totalG / 240 * 2) / 2} cups)` : "";
+                            return (
+                              <li key={item.name} className="flex items-center text-[13px] py-0.5">
+                                <span className="w-4 h-4 border border-stone-300 rounded mr-3 flex-shrink-0" />
+                                <span className="font-medium">{displayName}</span>
+                                <span className="text-stone-500 ml-2 text-[11px]">{totalStr} {usCups}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    );
+                  })}
+
+                  {/* Footer */}
+                  <div className="mt-10 pt-4 border-t border-stone-200 text-center text-[10px] text-stone-400">
+                    <p>Generated by CarbWise.org · ADA 2026 Standards of Care Aligned</p>
+                    <p className="mt-0.5">Meal plans use USDA food data. Consult your healthcare provider before making dietary changes.</p>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>,
+          document.body
+          )}
+        </>
       )}
 
       {/* Floating Feedback Button — mobile-friendly */}
