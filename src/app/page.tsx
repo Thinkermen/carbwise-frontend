@@ -267,7 +267,7 @@ export default function Home() {
       for await (const event of generateMealPlanStream({ ...profile, email })) {
         switch (event.phase) {
           case "thinking":
-            setStreamPhase("AI is reasoning about your nutrition profile...");
+            setStreamPhase("Building your personalized meal plan...");
             break;
           case "generating":
             setStreamPhase("Writing your personalized meal plan...");
@@ -310,40 +310,8 @@ export default function Home() {
 
       <Card className="shadow-[0_10px_40px_rgba(0,0,0,0.02)] border-0">
         <CardHeader className="pb-3"><CardTitle className="text-base font-semibold tracking-[-0.01em] text-[#1A1A1A]">Your Profile</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Diabetes Type</label>
-            <Select value={profile.diabetes_type} onValueChange={(v) => v && handleDiabetesTypeChange(v)}>
-              <SelectTrigger className="mt-1.5 w-full !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20 [&>svg]:text-stone-400"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Type 1">Type 1</SelectItem>
-                <SelectItem value="Type 2">Type 2</SelectItem>
-                <SelectItem value="Prediabetes">Prediabetes</SelectItem>
-                <SelectItem value="Gestational">Gestational</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Cuisine</label>
-            <Select value={profile.cuisine} onValueChange={(v) => v && setProfile({ ...profile, cuisine: v })}>
-              <SelectTrigger className="mt-1.5 w-full !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20 [&>svg]:text-stone-400"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="American">American</SelectItem>
-                <SelectItem value="Mediterranean">Mediterranean</SelectItem>
-                <SelectItem value="Asian">Asian</SelectItem>
-                <SelectItem value="Mexican">Mexican</SelectItem>
-                <SelectItem value="Indian">Indian</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Carb Target (g/day)</label>
-            <Input type="number" value={profile.carb_target_g} onChange={(e) => setProfile({ ...profile, carb_target_g: +e.target.value })} className="mt-1.5 !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20" />
-          </div>
-          <div>
-            <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Calorie Target (kcal)</label>
-            <Input type="number" value={profile.calorie_target} onChange={(e) => setProfile({ ...profile, calorie_target: +e.target.value })} className="mt-1.5 !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20" />
-          </div>
+        <CardContent className="space-y-4">
+          {/* Weight Goal — top priority */}
           <div>
             <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Weight Goal</label>
             <div className="flex gap-1.5 mt-1.5">
@@ -363,6 +331,8 @@ export default function Home() {
               ))}
             </div>
           </div>
+
+          {/* Height + Weight */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Height (cm)</label>
@@ -374,10 +344,48 @@ export default function Home() {
             </div>
           </div>
           {profile.height_cm && profile.weight_kg && (
-            <p className="text-[10px] text-[#A3A39C] -mt-1">
-              Auto-calibrated to {profile.calorie_target} kcal/day based on your metrics
-            </p>
+            <p className="text-[10px] text-[#A3A39C]">Auto-calibrated to {profile.calorie_target} kcal/day based on your metrics</p>
           )}
+
+          {/* Divider */}
+          <div className="border-t border-stone-100" />
+
+          {/* Existing fields */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Diabetes Type</label>
+              <Select value={profile.diabetes_type} onValueChange={(v) => v && handleDiabetesTypeChange(v)}>
+                <SelectTrigger className="mt-1.5 w-full !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20 [&>svg]:text-stone-400"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Type 1">Type 1</SelectItem>
+                  <SelectItem value="Type 2">Type 2</SelectItem>
+                  <SelectItem value="Prediabetes">Prediabetes</SelectItem>
+                  <SelectItem value="Gestational">Gestational</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Cuisine</label>
+              <Select value={profile.cuisine} onValueChange={(v) => v && setProfile({ ...profile, cuisine: v })}>
+                <SelectTrigger className="mt-1.5 w-full !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20 [&>svg]:text-stone-400"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="American">American</SelectItem>
+                  <SelectItem value="Mediterranean">Mediterranean</SelectItem>
+                  <SelectItem value="Asian">Asian</SelectItem>
+                  <SelectItem value="Mexican">Mexican</SelectItem>
+                  <SelectItem value="Indian">Indian</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Carb Target (g/day)</label>
+              <Input type="number" value={profile.carb_target_g} onChange={(e) => setProfile({ ...profile, carb_target_g: +e.target.value })} className="mt-1.5 !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20" />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Calorie Target (kcal)</label>
+              <Input type="number" value={profile.calorie_target} onChange={(e) => setProfile({ ...profile, calorie_target: +e.target.value })} className="mt-1.5 !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20" />
+            </div>
+          </div>
         </CardContent>
       </Card>
 

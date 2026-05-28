@@ -7,8 +7,8 @@ import "./globals.css";
 const geistSans = Geist({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CarbWise — AI Meal Planner",
-  description: "AI-powered meal planning and nutrition analysis for diabetes management",
+  title: "CarbWise — ADA-Aligned Meal Planner",
+  description: "Personalized diabetes meal plans grounded in USDA food data and ADA 2026 clinical guidelines. Free, no sign-up required.",
 };
 
 const navItems = [
