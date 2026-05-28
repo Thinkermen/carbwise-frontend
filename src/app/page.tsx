@@ -89,7 +89,7 @@ export default function Home() {
       localStorage.setItem("carbwise_email", waitlistEmail);
       setEmailUnlocked(true);
       fetchQuota(waitlistEmail).then(setQuota).catch(() => {});
-      toast.success("99 generations unlocked!");
+      toast.success("50 generations unlocked!");
     } catch { toast.error("Failed. Try again."); }
   };
 
@@ -458,7 +458,7 @@ export default function Home() {
             ? "Unlimited generations (whitelisted)"
             : `${quota.remaining} of ${quota.limit} generations left today`}
           {!quota.whitelisted && quota.limit === 7 && (
-            <> &mdash; <button type="button" onClick={() => document.getElementById("email-input")?.focus()} className="underline hover:text-emerald-600">submit email for 99/day</button></>
+            <> &mdash; <button type="button" onClick={() => document.getElementById("email-input")?.focus()} className="underline hover:text-emerald-600">submit email for 50/day</button></>
           )}
         </p>
       )}
