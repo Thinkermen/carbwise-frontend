@@ -457,7 +457,7 @@ export default function Home() {
           {quota.whitelisted
             ? "Unlimited generations (whitelisted)"
             : `${quota.remaining} of ${quota.limit} generations left today`}
-          {!quota.whitelisted && quota.limit === 3 && (
+          {!quota.whitelisted && quota.limit === 7 && (
             <> &mdash; <button type="button" onClick={() => document.getElementById("email-input")?.focus()} className="underline hover:text-emerald-600">submit email for 99/day</button></>
           )}
         </p>
