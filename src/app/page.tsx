@@ -536,57 +536,68 @@ export default function Home() {
       {plans.length > 0 && (
         <>
         <div className="space-y-4">
-          {/* GL Progress Bar — using first day as representative */}
-          {plans[0].total_estimated_gl != null && (
-            <Card className="border-stone-200/60 bg-[#F5F7F4] shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
-              <CardContent className="py-3 px-4">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-emerald-800">Daily Glycemic Load</span>
-                  <span className="text-xs font-bold text-emerald-700 tabular-nums">
-                    {plans[0].total_estimated_gl} / 120
-                  </span>
+          {/* Nutrition summary — averages across all days */}
+          {(() => {
+            const n = plans.length;
+            const avg = (fn: (p: MealPlan) => number | null | undefined) => {
+              const vals = plans.map(fn).filter(v => v != null) as number[];
+              return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+            };
+            const avgCarb = avg(p => p.total_carb_g);
+            const avgProtein = avg(p => p.total_protein_g);
+            const avgFat = avg(p => p.total_fat_g);
+            const avgCal = avg(p => p.total_calories);
+            const avgGL = avg(p => p.total_estimated_gl);
+            const label = plans.length > 1 ? "Daily avg" : undefined;
+            return (
+              <>
+                {avgGL != null && (
+                  <Card className="border-stone-200/60 bg-[#F5F7F4] shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
+                    <CardContent className="py-3 px-4">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-medium text-emerald-800">Glycemic Load{label ? ` (${label})` : ""}</span>
+                        <span className="text-xs font-bold text-emerald-700 tabular-nums">{avgGL} / 120</span>
+                      </div>
+                      <div className="h-2 bg-emerald-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-1000 ${avgGL <= 80 ? "bg-emerald-600" : avgGL <= 100 ? "bg-amber-500" : "bg-red-400"}`}
+                          style={{ width: `${Math.min((avgGL / 120) * 100, 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-[10px] text-stone-400 mt-1">
+                        {avgGL <= 60 && "Excellent — well within the safe zone"}
+                        {avgGL > 60 && avgGL <= 80 && "Good — moderate glycemic load"}
+                        {avgGL > 80 && avgGL <= 100 && "Borderline — consider swapping high-GL items"}
+                        {avgGL > 100 && "High — try swapping some items for lower-GL alternatives"}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+                <div className="flex gap-2.5 flex-wrap">
+                  <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#EAF6ED] text-[#2E7D32] flex-1 min-w-[72px]">
+                    <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{avgCarb}<span className="text-[11px] font-medium">g</span></span>
+                    <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Carbs{label ? ` ${label}` : ""}</span>
+                  </div>
+                  {avgProtein != null && (
+                    <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#E8F1FC] text-[#1565C0] flex-1 min-w-[72px]">
+                      <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{avgProtein}<span className="text-[11px] font-medium">g</span></span>
+                      <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Protein</span>
+                    </div>
+                  )}
+                  {avgFat != null && (
+                    <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#FFF3E0] text-[#E65100] flex-1 min-w-[72px]">
+                      <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{avgFat}<span className="text-[11px] font-medium">g</span></span>
+                      <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Fat</span>
+                    </div>
+                  )}
+                  <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#FFEBEE] text-[#C62828] flex-1 min-w-[72px]">
+                    <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{avgCal ?? "—"}</span>
+                    <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Kcal</span>
+                  </div>
                 </div>
-                <div className="h-2 bg-emerald-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-1000 ${
-                      plans[0].total_estimated_gl <= 80 ? "bg-emerald-600" :
-                      plans[0].total_estimated_gl <= 100 ? "bg-amber-500" : "bg-red-400"
-                    }`}
-                    style={{ width: `${Math.min((plans[0].total_estimated_gl / 120) * 100, 100)}%` }}
-                  />
-                </div>
-                <p className="text-[10px] text-stone-400 mt-1">
-                  {plans[0].total_estimated_gl <= 60 && "Excellent — well within the safe zone"}
-                  {plans[0].total_estimated_gl > 60 && plans[0].total_estimated_gl <= 80 && "Good — moderate glycemic load"}
-                  {plans[0].total_estimated_gl > 80 && plans[0].total_estimated_gl <= 100 && "Borderline — consider swapping high-GL items"}
-                  {plans[0].total_estimated_gl > 100 && "High — try swapping some items for lower-GL alternatives"}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="flex gap-2.5 flex-wrap">
-            <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#EAF6ED] text-[#2E7D32] flex-1 min-w-[72px]">
-              <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plans[0].total_carb_g}<span className="text-[11px] font-medium">g</span></span>
-              <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Carbs</span>
-            </div>
-            {plans[0].total_protein_g != null && (
-              <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#E8F1FC] text-[#1565C0] flex-1 min-w-[72px]">
-                <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plans[0].total_protein_g}<span className="text-[11px] font-medium">g</span></span>
-                <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Protein</span>
-              </div>
-            )}
-            {plans[0].total_fat_g != null && (
-              <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#FFF3E0] text-[#E65100] flex-1 min-w-[72px]">
-                <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plans[0].total_fat_g}<span className="text-[11px] font-medium">g</span></span>
-                <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Fat</span>
-              </div>
-            )}
-            <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#FFEBEE] text-[#C62828] flex-1 min-w-[72px]">
-              <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plans[0].total_calories ?? "—"}</span>
-              <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Kcal</span>
-            </div>
-          </div>
+              </>
+            );
+          })()}
           {plans.map((dayPlan, dayIdx) => (
             <div key={dayIdx}>
               {plans.length > 1 && (
