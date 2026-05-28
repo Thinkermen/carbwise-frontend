@@ -144,17 +144,20 @@ export default function Home() {
   };
 
   // Grocery aisle categorization — keyword-based routing
+  // RULES ARE ORDER-DEPENDENT: earlier rules take priority. Nuts before Dairy
+  // (so "peanut butter" matches before "butter"), Oils last among non-fallback
+  // (so "salt" in "without salt" doesn't steal vegetables).
   const GROCERY_RULES: [string[], string][] = [
     [["blueberr", "strawberr", "raspberr", "blackberr", "frozen", "mixed fruit", "mixed berry"], "Frozen"],
     [["beef", "steak", "ground beef", "chicken breast", "chicken thigh", "turkey", "pork", "lamb", "veal", "bacon", "sausage", "deli meat", "ham "], "Meat & Poultry"],
     [["salmon", "tuna", "cod", "tilapia", "shrimp", "fish", "seafood", "sardine", "anchov", "oyster", "clam", "mussel", "crab", "lobster"], "Seafood"],
+    [["nut", "almond", "walnut", "pecan", "cashew", "peanut", "seed", "sunflower", "pumpkin", "chia", "flax", "peanut butter", "almond butter"], "Nuts & Seeds"],
     [["milk", "yogurt", "cheese", "cottage", "cream", "butter", "sour cream", "mozzarella", "cheddar", "parmesan", "feta", "ricotta", "egg"], "Dairy & Eggs"],
     [["bread", "roll", "bun", "bagel", "tortilla", "wrap", "pita", "naan", "english muffin", "croissant"], "Bakery"],
     [["rice", "pasta", "oat", "cereal", "quinoa", "barley", "couscous", "noodle", "flour", "cornmeal", "grits"], "Grains & Pasta"],
-    [["oil", "vinegar", "soy sauce", "mustard", "ketchup", "mayo", "dressing", "salsa", "hot sauce", "worcestershire", "spice", "cinnamon", "cumin", "paprika", "oregano", "basil", "thyme", "rosemary", "garlic powder", "onion powder", "pepper", "salt", "herb", "seasoning", "vanilla", "sugar", "honey", "syrup"], "Oils & Condiments"],
-    [["nut", "almond", "walnut", "pecan", "cashew", "peanut", "seed", "sunflower", "pumpkin", "chia", "flax", "peanut butter", "almond butter"], "Nuts & Seeds"],
-    [["canned", "can", "jarred", "olive", "capers", "pickle", "artichoke", "broth", "stock", "coconut milk"], "Canned & Jarred"],
     [["tofu", "tempeh", "edamame", "soy", "miso"], "Plant-Based Protein"],
+    [["canned", "can", "jarred", "olive", "capers", "pickle", "artichoke", "broth", "stock", "coconut milk"], "Canned & Jarred"],
+    [["oil", "vinegar", "soy sauce", "mustard", "ketchup", "mayo", "dressing", "salsa", "hot sauce", "worcestershire", "spice", "cinnamon", "cumin", "paprika", "oregano", "basil", "thyme", "rosemary", "garlic powder", "onion powder", "peppercorn", "black pepper", "herb", "seasoning", "vanilla", "sugar", "honey", "syrup", "salt "], "Oils & Condiments"],
   ];
 
   const categorizeFood = (name: string): string => {
