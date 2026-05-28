@@ -50,8 +50,10 @@ const RITUAL_STEPS = [
 ];
 
 export default function Home() {
-  const [plan, setPlan] = useState<MealPlan | null>(null);
+  const [plans, setPlans] = useState<MealPlan[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingDay, setLoadingDay] = useState(0);
+  const [totalDays, setTotalDays] = useState(1);
   const [loadingStep, setLoadingStep] = useState(0);
   const [progressPercent, setProgressPercent] = useState(0);
   const [streamPhase, setStreamPhase] = useState("");
@@ -75,9 +77,6 @@ export default function Home() {
   const [feedbackEmail, setFeedbackEmail] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingPlan = useRef<MealPlan | null>(null);
-  const streamDone = useRef(false);
-  const revealed = useRef(false);
 
   const handleUnlock = async () => {
     if (!waitlistEmail.includes("@")) return;
@@ -114,6 +113,7 @@ export default function Home() {
     height_cm: undefined as number | undefined,
     weight_kg: undefined as number | undefined,
     weight_goal: "maintain" as "lose" | "maintain" | "gain",
+    days: 1 as 1 | 3 | 7,
   });
 
   const handleDiabetesTypeChange = (v: string) => {
@@ -171,15 +171,18 @@ export default function Home() {
     return "Pantry";
   };
 
-  const buildShoppingList = (plan: MealPlan) => {
+  const buildShoppingList = (planOrPlans: MealPlan | MealPlan[]) => {
+    const planList = Array.isArray(planOrPlans) ? planOrPlans : [planOrPlans];
     const items: Record<string, { totalG: number; portions: { meal: string; amount: string }[] }> = {};
-    plan.meals.forEach(meal => {
-      meal.foods?.forEach(food => {
-        const rawName = food.db_name || food.name || "Unknown";
-        const key = cleanFoodName(rawName).toLowerCase().replace(/\s+/g, " ").trim();
-        if (!items[key]) items[key] = { totalG: 0, portions: [] };
-        items[key].totalG += food.portion_g || 0;
-        items[key].portions.push({ meal: meal.type, amount: `${food.portion_g || 0}g` });
+    planList.forEach(plan => {
+      plan.meals.forEach(meal => {
+        meal.foods?.forEach(food => {
+          const rawName = food.db_name || food.name || "Unknown";
+          const key = cleanFoodName(rawName).toLowerCase().replace(/\s+/g, " ").trim();
+          if (!items[key]) items[key] = { totalG: 0, portions: [] };
+          items[key].totalG += food.portion_g || 0;
+          items[key].portions.push({ meal: meal.type, amount: `${food.portion_g || 0}g` });
+        });
       });
     });
 
@@ -229,14 +232,14 @@ export default function Home() {
     return cleaned.length > 65 ? cleaned.slice(0, 62) + "..." : cleaned;
   };
   const handleSwap = async (mealIdx: number, foodIdx: number, currentFdcId?: number) => {
-    if (!currentFdcId || !plan) return;
+    if (!currentFdcId || plans.length === 0) return;
     try {
       const result = await swapFood(currentFdcId);
       if (result.swaps.length > 0) {
         const swap = result.swaps[0];
-        // Use the lower-GL swap (already sorted by gi_diff in backend)
         const newGl = swap.glycemic_load ?? calcGL(swap.carb_g || 0, swap.fiber_g || 0, swap.glycemic_index);
         let newTotalGl = 0;
+        const plan = plans[0];
         const newMeals = plan.meals.map((m, mi) => {
           if (mi !== mealIdx) {
             m.foods.forEach((f: any) => { newTotalGl += f.estimated_gl || 0; });
@@ -270,7 +273,7 @@ export default function Home() {
             }),
           };
         });
-        setPlan({ ...plan, meals: newMeals, total_estimated_gl: Math.round(newTotalGl * 10) / 10 });
+        setPlans([{ ...plan, meals: newMeals, total_estimated_gl: Math.round(newTotalGl * 10) / 10 }]);
         toast.success(`Swapped: ${swap.name} (GL: ${newGl})`);
       }
     } catch {
@@ -278,76 +281,83 @@ export default function Home() {
     }
   };
 
-  // Progress bar: advance steps, reveal plan only when bar reaches final step
+  // Progress bar: real progress from generation loop, cycling step text for visual interest
   useEffect(() => {
     if (loading) {
       setLoadingStep(0);
-      setProgressPercent(0);
-      pendingPlan.current = null;
-      streamDone.current = false;
-      revealed.current = false;
       timerRef.current = setInterval(() => {
-        setLoadingStep((prev) => {
-          const next = prev < RITUAL_STEPS.length - 1 ? prev + 1 : prev;
-          setProgressPercent(Math.round((next / RITUAL_STEPS.length) * 100));
-          if (next === RITUAL_STEPS.length - 1 && streamDone.current && pendingPlan.current && !revealed.current) {
-            revealed.current = true;
-            setPlan(pendingPlan.current);
-            toast.success("Meal plan ready!", { style: { background: "#EAF6ED", color: "#2E7D32", border: "none" } });
-            setLoading(false);
-          }
-          return next;
-        });
-      }, 3000);
+        setLoadingStep((prev) => (prev + 1) % RITUAL_STEPS.length);
+      }, 2000);
     } else {
+      setProgressPercent(100);
       if (timerRef.current) clearInterval(timerRef.current);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [loading]);
 
   const handleGenerate = async () => {
-    if (quota && !quota.whitelisted && quota.remaining <= 0) {
-      toast.error(`今日生成次数已用完（${quota.limit}次/天），请明天再来`);
+    const days = profile.days || 1;
+    if (quota && !quota.whitelisted && quota.remaining < days) {
+      toast.error(`需要${days}次生成，但只剩${quota.remaining}次（${quota.limit}次/天）`);
       return;
     }
-    setPlan(null);
+    setPlans([]);
     setStreamPhase("");
     setLoading(true);
-    try {
-      const email = localStorage.getItem("carbwise_email") || undefined;
-      for await (const event of generateMealPlanStream({ ...profile, email })) {
-        switch (event.phase) {
-          case "thinking":
-            setStreamPhase("Building your personalized meal plan...");
-            break;
-          case "generating":
-            setStreamPhase("Writing your personalized meal plan...");
-            break;
-          case "validating":
-            setStreamPhase("Verifying foods against USDA database...");
-            break;
-          case "done":
-            if (event.plan) {
-              pendingPlan.current = event.plan;
-              streamDone.current = true;
-              fetchQuota(email).then(setQuota).catch(() => {});
-            }
-            break;
-          case "error":
-            toast.error(event.message || "Generation failed");
-            setLoading(false);
-            break;
+    setTotalDays(days);
+    setLoadingDay(0);
+
+    const email = localStorage.getItem("carbwise_email") || undefined;
+    const allPlans: MealPlan[] = [];
+
+    for (let d = 0; d < days; d++) {
+      setLoadingDay(d + 1);
+      setStreamPhase(`Day ${d + 1} of ${days} — Building your meal plan...`);
+      setProgressPercent(Math.round((d / days) * 100));
+
+      try {
+        for await (const event of generateMealPlanStream({ ...profile, email })) {
+          const daySegment = 100 / days;
+          switch (event.phase) {
+            case "thinking":
+              setStreamPhase(`Day ${d + 1} of ${days} — Analyzing nutrition profile...`);
+              setProgressPercent(Math.round(d * daySegment + daySegment * 0.2));
+              break;
+            case "generating":
+              setStreamPhase(`Day ${d + 1} of ${days} — Writing meal plan...`);
+              setProgressPercent(Math.round(d * daySegment + daySegment * 0.5));
+              break;
+            case "validating":
+              setStreamPhase(`Day ${d + 1} of ${days} — Verifying against USDA database...`);
+              setProgressPercent(Math.round(d * daySegment + daySegment * 0.8));
+              break;
+            case "done":
+              if (event.plan) {
+                allPlans.push(event.plan);
+                setPlans([...allPlans]);
+                setProgressPercent(Math.round((d + 1) * daySegment));
+              }
+              break;
+            case "error":
+              toast.error(event.message || `Day ${d + 1} generation failed`);
+              break;
+          }
         }
+      } catch (e: any) {
+        if (e.message?.includes("429")) {
+          toast.error("今日生成次数已用完，请明天再来");
+          setQuota((prev) => prev ? { ...prev, remaining: 0 } : null);
+          setLoading(false);
+          return;
+        }
+        toast.error(`Day ${d + 1} failed — continuing`);
       }
-    } catch (e: any) {
-      if (e.message?.includes("429")) {
-        toast.error("今日生成次数已用完，请明天再来");
-        setQuota((prev) => prev ? { ...prev, remaining: 0 } : null);
-      } else {
-        toast.error("生成失败，请检查网络连接后重试");
-      }
-      setLoading(false);
     }
+
+    fetchQuota(email).then(setQuota).catch(() => {});
+    setLoading(false);
+    const dayLabel = days > 1 ? `${days}-day` : "1-day";
+    toast.success(`${dayLabel} meal plan ready!`, { style: { background: "#EAF6ED", color: "#2E7D32", border: "none" } });
   };
 
   return (
@@ -440,17 +450,31 @@ export default function Home() {
         </CardContent>
       </Card>
 
-      <Button
-        onClick={handleGenerate}
-        disabled={loading || (!!quota && !quota.whitelisted && quota.remaining <= 0)}
-        className="w-full bg-[#133D2D] hover:bg-[#1A4E3B] rounded-full py-3.5 text-base font-semibold transition-all duration-300"
-      >
-        {loading
-          ? "Generating..."
-          : (quota && !quota.whitelisted && quota.remaining <= 0)
-            ? "No Generations Left Today"
-            : "Generate Today's Meal Plan"}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          onClick={handleGenerate}
+          disabled={loading || (!!quota && !quota.whitelisted && quota.remaining <= 0)}
+          className="flex-1 bg-[#133D2D] hover:bg-[#1A4E3B] rounded-full py-3.5 text-base font-semibold transition-all duration-300"
+        >
+          {loading
+            ? `Day ${loadingDay} of ${totalDays}...`
+            : (quota && !quota.whitelisted && quota.remaining <= 0)
+              ? "No Generations Left Today"
+              : `Generate ${profile.days > 1 ? `${profile.days}-Day ` : ""}Meal Plan`}
+        </Button>
+        {!loading && (
+          <Select value={String(profile.days)} onValueChange={(v) => v && setProfile(p => ({ ...p, days: +v as 1 | 3 | 7 }))}>
+            <SelectTrigger className="w-[80px] !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-3 h-auto focus:ring-2 focus:ring-[#1B4332]/20 [&>svg]:text-stone-400">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">1 day</SelectItem>
+              <SelectItem value="3">3 days</SelectItem>
+              <SelectItem value="7">7 days</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
       {quota && (
         <p className="text-[11px] text-center text-[#A3A39C]">
@@ -509,32 +533,33 @@ export default function Home() {
         </Card>
       )}
 
-      {plan && (
+      {plans.length > 0 && (
+        <>
         <div className="space-y-4">
-          {/* GL Progress Bar with gamification */}
-          {plan.total_estimated_gl != null && (
+          {/* GL Progress Bar — using first day as representative */}
+          {plans[0].total_estimated_gl != null && (
             <Card className="border-stone-200/60 bg-[#F5F7F4] shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
               <CardContent className="py-3 px-4">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-medium text-emerald-800">Daily Glycemic Load</span>
                   <span className="text-xs font-bold text-emerald-700 tabular-nums">
-                    {plan.total_estimated_gl} / 120
+                    {plans[0].total_estimated_gl} / 120
                   </span>
                 </div>
                 <div className="h-2 bg-emerald-100 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-1000 ${
-                      plan.total_estimated_gl <= 80 ? "bg-emerald-600" :
-                      plan.total_estimated_gl <= 100 ? "bg-amber-500" : "bg-red-400"
+                      plans[0].total_estimated_gl <= 80 ? "bg-emerald-600" :
+                      plans[0].total_estimated_gl <= 100 ? "bg-amber-500" : "bg-red-400"
                     }`}
-                    style={{ width: `${Math.min((plan.total_estimated_gl / 120) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((plans[0].total_estimated_gl / 120) * 100, 100)}%` }}
                   />
                 </div>
                 <p className="text-[10px] text-stone-400 mt-1">
-                  {plan.total_estimated_gl <= 60 && "Excellent — well within the safe zone"}
-                  {plan.total_estimated_gl > 60 && plan.total_estimated_gl <= 80 && "Good — moderate glycemic load"}
-                  {plan.total_estimated_gl > 80 && plan.total_estimated_gl <= 100 && "Borderline — consider swapping high-GL items"}
-                  {plan.total_estimated_gl > 100 && "High — try swapping some items for lower-GL alternatives"}
+                  {plans[0].total_estimated_gl <= 60 && "Excellent — well within the safe zone"}
+                  {plans[0].total_estimated_gl > 60 && plans[0].total_estimated_gl <= 80 && "Good — moderate glycemic load"}
+                  {plans[0].total_estimated_gl > 80 && plans[0].total_estimated_gl <= 100 && "Borderline — consider swapping high-GL items"}
+                  {plans[0].total_estimated_gl > 100 && "High — try swapping some items for lower-GL alternatives"}
                 </p>
               </CardContent>
             </Card>
@@ -542,119 +567,108 @@ export default function Home() {
 
           <div className="flex gap-2.5 flex-wrap">
             <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#EAF6ED] text-[#2E7D32] flex-1 min-w-[72px]">
-              <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plan.total_carb_g}<span className="text-[11px] font-medium">g</span></span>
+              <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plans[0].total_carb_g}<span className="text-[11px] font-medium">g</span></span>
               <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Carbs</span>
             </div>
-            {plan.total_protein_g != null && (
+            {plans[0].total_protein_g != null && (
               <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#E8F1FC] text-[#1565C0] flex-1 min-w-[72px]">
-                <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plan.total_protein_g}<span className="text-[11px] font-medium">g</span></span>
+                <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plans[0].total_protein_g}<span className="text-[11px] font-medium">g</span></span>
                 <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Protein</span>
               </div>
             )}
-            {plan.total_fat_g != null && (
+            {plans[0].total_fat_g != null && (
               <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#FFF3E0] text-[#E65100] flex-1 min-w-[72px]">
-                <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plan.total_fat_g}<span className="text-[11px] font-medium">g</span></span>
+                <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plans[0].total_fat_g}<span className="text-[11px] font-medium">g</span></span>
                 <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Fat</span>
               </div>
             )}
             <div className="flex flex-col items-center px-4 py-2.5 rounded-full bg-[#FFEBEE] text-[#C62828] flex-1 min-w-[72px]">
-              <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plan.total_calories ?? "—"}</span>
+              <span className="text-lg font-bold tracking-[-0.03em] tabular-nums">{plans[0].total_calories ?? "—"}</span>
               <span className="text-[10px] font-medium text-stone-400 uppercase tracking-[0.04em]">Kcal</span>
             </div>
           </div>
-          {plan.meals?.map((meal, i) => {
-            const IconComp = MEAL_ICONS[meal.type] || Cookie;
-            return (
-            <Card key={i} className="animate-meal-reveal shadow-[0_4px_24px_rgba(0,0,0,0.02)] border-stone-200/60" style={{ animationDelay: `${i * 0.2}s` }}>
-              <CardContent className="pt-5 pb-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 bg-[#FFFDF5]">
-                    <IconComp className="w-5 h-5 text-stone-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${MEAL_BADGE[meal.type] || "bg-stone-100 text-stone-600"}`}>{meal.type}</span>
-                    </div>
-                    <div className="text-lg font-bold tracking-[-0.02em] text-[#1A1A1A] leading-tight">{meal.name}</div>
-                    {meal.foods && (
-                      <p className="text-[11px] text-[#2E7D32] font-medium mt-1">
-                        {Math.round(meal.foods.reduce((sum, f) => sum + (f.nutrition?.carb_g || 0), 0))}g carbs this meal
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <ul className="space-y-0.5">
-                  {meal.foods?.map((food, j) => {
-                    const isSpikeBlunter = meal.spike_blunter_pair?.includes(food.name) ||
-                                          meal.spike_blunter_pair?.some(p => (food.db_name || food.name).toLowerCase().includes(p.toLowerCase()));
-                    const gl = food.estimated_gl;
-                    return (
-                    <li key={j} className={`flex justify-between text-sm items-center px-3 py-2.5 rounded-[10px] hover:bg-stone-50/50 transition-colors ${isSpikeBlunter ? "bg-amber-50/20" : ""}`}>
-                      <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isSpikeBlunter ? "bg-[#E05A16]" : "bg-stone-300"}`} />
-                        <span className="text-[14px] font-medium text-[#2D2D2D] truncate" title={food.db_name || food.name}>
-                          {cleanFoodName(food.ai_name || food.db_name || food.name)}
-                        </span>
-                        {food.hallucinated && (
-                          <Badge variant="outline" className="text-[10px] px-1 py-0 ml-0.5 text-amber-700 border-amber-400 flex-shrink-0">
-                            auto-fixed
-                          </Badge>
+          {plans.map((dayPlan, dayIdx) => (
+            <div key={dayIdx}>
+              {plans.length > 1 && (
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-stone-400 mb-3 mt-2">
+                  Day {dayIdx + 1}{" "}
+                  <span className="font-normal normal-case tracking-normal text-stone-400">
+                    · {dayPlan.total_carb_g}g carbs · {dayPlan.total_calories} kcal
+                  </span>
+                </h3>
+              )}
+              {dayPlan.meals?.map((meal, i) => {
+                const IconComp = MEAL_ICONS[meal.type] || Cookie;
+                return (
+                <Card key={i} className="animate-meal-reveal shadow-[0_4px_24px_rgba(0,0,0,0.02)] border-stone-200/60 mb-3" style={{ animationDelay: `${i * 0.15}s` }}>
+                  <CardContent className="pt-5 pb-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 bg-[#FFFDF5]">
+                        <IconComp className="w-5 h-5 text-stone-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${MEAL_BADGE[meal.type] || "bg-stone-100 text-stone-600"}`}>{meal.type}</span>
+                        </div>
+                        <div className="text-lg font-bold tracking-[-0.02em] text-[#1A1A1A] leading-tight">{meal.name}</div>
+                        {meal.foods && (
+                          <p className="text-[11px] text-[#2E7D32] font-medium mt-1">
+                            {Math.round(meal.foods.reduce((sum, f) => sum + (f.nutrition?.carb_g || 0), 0))}g carbs this meal
+                          </p>
                         )}
                       </div>
-                      <span className="flex gap-3 items-center shrink-0 text-xs tabular-nums">
-                        {gl != null && <span className="font-semibold text-[#2D7A57]">GL {gl}</span>}
-                        <span className="font-normal text-[#8C8C85]">{food.portion_g}g</span>
-                      </span>
-                    </li>
-                    );
-                  })}
-                </ul>
-
-                {/* AI Insight */}
-                {meal.ai_insight && (
-                  emailUnlocked ? (
-                    <div className="mt-3 p-3.5 bg-[#F4F7F5] rounded-xl text-[13px] text-[#2D2D2D] leading-relaxed flex gap-2.5">
-                      <span className="text-base flex-shrink-0 mt-px">💡</span>
-                      <span>{meal.ai_insight}</span>
                     </div>
-                  ) : (
-                    <details className="mt-3 group/blur">
-                      <summary className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-[#F8F8F7] text-[#8C8C85] rounded-xl text-[13px] font-medium hover:bg-[#EAF6ED] hover:text-[#2E7D32] transition-colors cursor-pointer list-none">
-                        <Lock className="w-3.5 h-3.5" /> Unlock insight — free with email
-                      </summary>
-                      <div className="mt-2.5 p-3 bg-stone-50 rounded-xl border border-stone-100 space-y-2 text-center">
-                        <div className="blur-[2px] select-none pointer-events-none opacity-20 text-[11px] text-stone-500 leading-snug line-clamp-2">
-                          {meal.ai_insight}
+                    <ul className="space-y-0.5">
+                      {meal.foods?.map((food, j) => {
+                        const isSpikeBlunter = meal.spike_blunter_pair?.includes(food.name) ||
+                                              meal.spike_blunter_pair?.some(p => (food.db_name || food.name).toLowerCase().includes(p.toLowerCase()));
+                        const gl = food.estimated_gl;
+                        return (
+                        <li key={j} className={`flex justify-between text-sm items-center px-3 py-2.5 rounded-[10px] hover:bg-stone-50/50 transition-colors ${isSpikeBlunter ? "bg-amber-50/20" : ""}`}>
+                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isSpikeBlunter ? "bg-[#E05A16]" : "bg-stone-300"}`} />
+                            <span className="text-[14px] font-medium text-[#2D2D2D] truncate" title={food.db_name || food.name}>
+                              {cleanFoodName(food.ai_name || food.db_name || food.name)}
+                            </span>
+                          </div>
+                          <span className="flex gap-3 items-center shrink-0 text-xs tabular-nums">
+                            {gl != null && <span className="font-semibold text-[#2D7A57]">GL {gl}</span>}
+                            <span className="font-normal text-[#8C8C85]">{food.portion_g}g</span>
+                          </span>
+                        </li>
+                        );
+                      })}
+                    </ul>
+                    {meal.ai_insight && (
+                      emailUnlocked ? (
+                        <div className="mt-3 p-3.5 bg-[#F4F7F5] rounded-xl text-[13px] text-[#2D2D2D] leading-relaxed flex gap-2.5">
+                          <span className="text-base flex-shrink-0 mt-px">💡</span>
+                          <span>{meal.ai_insight}</span>
                         </div>
-                        <p className="text-[11px] font-medium text-stone-600">Enter your email to unlock</p>
-                        <div className="flex gap-1.5 justify-center">
-                          <input
-                            type="email"
-                            id={`unlock-${i}`}
-                            placeholder="your@email.com"
-                            value={waitlistEmail}
-                            onChange={(e) => setWaitlistEmail(e.target.value)}
-                            className="text-[11px] px-2.5 py-1.5 border border-stone-200 rounded-lg w-36 focus:outline-none focus:ring-1 focus:ring-emerald-300 bg-white"
-                          />
-                          <button
-                            onClick={handleUnlock}
-                            className="text-[11px] px-3 py-1.5 bg-emerald-800 text-white rounded-lg hover:bg-emerald-900 transition-colors font-medium"
-                          >
-                            Unlock
-                          </button>
-                        </div>
-                        <p className="text-[10px] text-stone-400">No credit card — early access</p>
-                      </div>
-                    </details>
-                  )
-                )}
-              </CardContent>
-            </Card>
-          )})}
+                      ) : (
+                        <details className="mt-3 group/blur">
+                          <summary className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-[#F8F8F7] text-[#8C8C85] rounded-xl text-[13px] font-medium hover:bg-[#EAF6ED] hover:text-[#2E7D32] transition-colors cursor-pointer list-none">
+                            <Lock className="w-3.5 h-3.5" /> Unlock insight — free with email
+                          </summary>
+                          <div className="mt-2.5 p-3 bg-stone-50 rounded-xl border border-stone-100 space-y-2 text-center">
+                            <div className="blur-[2px] select-none pointer-events-none opacity-20 text-[11px] text-stone-500 leading-snug line-clamp-2">{meal.ai_insight}</div>
+                            <p className="text-[11px] font-medium text-stone-600">Enter your email to unlock</p>
+                            <div className="flex gap-1.5 justify-center">
+                              <input type="email" id={`unlock-${dayIdx}-${i}`} placeholder="your@email.com" value={waitlistEmail} onChange={(e) => setWaitlistEmail(e.target.value)} className="text-[11px] px-2.5 py-1.5 border border-stone-200 rounded-lg w-36 focus:outline-none focus:ring-1 focus:ring-emerald-300 bg-white" />
+                              <button onClick={handleUnlock} className="text-[11px] px-3 py-1.5 bg-emerald-800 text-white rounded-lg hover:bg-emerald-900 transition-colors font-medium">Unlock</button>
+                            </div>
+                            <p className="text-[10px] text-stone-400">No credit card — early access</p>
+                          </div>
+                        </details>
+                      )
+                    )}
+                  </CardContent>
+                </Card>
+              )})}
+            </div>
+          ))}
         </div>
-      )}
 
-      {plan && (
         <>
           <button
             onClick={() => window.print()}
@@ -668,7 +682,7 @@ export default function Home() {
           {typeof document !== "undefined" && createPortal(
           <div className="print-only hidden">
             {(() => {
-              const sections = buildShoppingList(plan);
+              const sections = buildShoppingList(plans);
               const sectionOrder = ["Produce", "Meat & Poultry", "Seafood", "Dairy & Eggs", "Bakery", "Grains & Pasta", "Nuts & Seeds", "Oils & Condiments", "Canned & Jarred", "Plant-Based Protein", "Frozen", "Pantry"];
               const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
               return (
@@ -676,16 +690,16 @@ export default function Home() {
                   {/* Header */}
                   <div className="text-center mb-8 pb-6 border-b-2 border-[#133D2D]">
                     <h1 className="text-2xl font-bold tracking-tight text-[#133D2D] mb-1">CarbWise Shopping List</h1>
-                    <p className="text-sm text-stone-500">{today} · {plan.total_carb_g}g carb target · {plan.total_calories} kcal</p>
+                    <p className="text-sm text-stone-500">{today} · {plans.length > 1 ? `${plans.length}-day plan` : "1-day plan"}</p>
                   </div>
 
-                  {/* Daily Menu Summary */}
-                  <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-stone-400 mb-4">Today's Menu</h2>
+                  {/* Menu Summary — all days */}
+                  <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-stone-400 mb-4">Menu</h2>
                   <div className="grid grid-cols-2 gap-3 mb-10">
-                    {plan.meals.map(meal => {
+                    {plans.flatMap((p, di) => p.meals.map(m => ({ ...m, _day: di + 1 }))).map((meal, mi) => {
                       const carbs = Math.round(meal.foods?.reduce((s, f) => s + (f.nutrition?.carb_g || 0), 0) || 0);
                       return (
-                        <div key={meal.type} className="flex items-start gap-2 text-sm">
+                        <div key={`${meal._day}-${meal.type}-${mi}`} className="flex items-start gap-2 text-sm">
                           <span className="text-[10px] font-bold uppercase text-stone-400 w-14 flex-shrink-0 mt-0.5">{meal.type === "snack_1" ? "Snack 1" : meal.type === "snack_2" ? "Snack 2" : meal.type}</span>
                           <span className="font-medium">{meal.name}</span>
                           <span className="text-stone-400 text-xs ml-auto">{carbs}g</span>
@@ -733,6 +747,7 @@ export default function Home() {
           </div>,
           document.body
           )}
+        </>
         </>
       )}
 
