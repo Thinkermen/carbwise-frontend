@@ -120,6 +120,9 @@ export async function generateMealPlan(profile: {
   allergies?: string[];
   preferences?: string;
   cuisine?: string;
+  height_cm?: number;
+  weight_kg?: number;
+  weight_goal?: "lose" | "maintain" | "gain";
 }): Promise<MealPlan> {
   const res = await fetch(`${API_BASE}/meal-plans/generate`, {
     method: "POST",
@@ -138,6 +141,9 @@ export async function* generateMealPlanStream(profile: {
   preferences?: string;
   cuisine?: string;
   email?: string;
+  height_cm?: number;
+  weight_kg?: number;
+  weight_goal?: "lose" | "maintain" | "gain";
 }): AsyncGenerator<StreamEvent> {
   const res = await fetch(`${API_BASE}/meal-plans/generate-stream`, {
     method: "POST",

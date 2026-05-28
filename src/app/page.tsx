@@ -110,6 +110,9 @@ export default function Home() {
     calorie_target: 1800,
     preferences: "balanced",
     cuisine: "American",
+    height_cm: undefined as number | undefined,
+    weight_kg: undefined as number | undefined,
+    weight_goal: "maintain" as "lose" | "maintain" | "gain",
   });
 
   const handleDiabetesTypeChange = (v: string) => {
@@ -121,6 +124,22 @@ export default function Home() {
     };
     const d = defaults[v] || { carb: 150, cal: 1800 };
     setProfile(p => ({ ...p, diabetes_type: v, carb_target_g: d.carb, calorie_target: d.cal }));
+  };
+
+  // Auto-adjust calorie target when height/weight/goal change
+  const updateBodyMetrics = (updates: Partial<typeof profile>) => {
+    setProfile(p => {
+      const next = { ...p, ...updates };
+      if (next.height_cm && next.weight_kg) {
+        // Mifflin-St Jeor BMR, female default (lower calorie needs)
+        const bmr = 10 * next.weight_kg + 6.25 * next.height_cm - 5 * 25 - 161;
+        const tdee = Math.round(bmr * 1.35); // lightly active
+        if (next.weight_goal === "gain") next.calorie_target = tdee + 400;
+        else if (next.weight_goal === "lose") next.calorie_target = Math.max(1200, tdee - 400);
+        else next.calorie_target = tdee;
+      }
+      return next;
+    });
   };
 
   // Helper: calculate GL from carb, fiber, GI
@@ -325,6 +344,40 @@ export default function Home() {
             <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Calorie Target (kcal)</label>
             <Input type="number" value={profile.calorie_target} onChange={(e) => setProfile({ ...profile, calorie_target: +e.target.value })} className="mt-1.5 !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20" />
           </div>
+          <div>
+            <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Weight Goal</label>
+            <div className="flex gap-1.5 mt-1.5">
+              {(["lose", "maintain", "gain"] as const).map((goal) => (
+                <button
+                  key={goal}
+                  type="button"
+                  onClick={() => updateBodyMetrics({ weight_goal: goal })}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-medium transition-colors ${
+                    profile.weight_goal === goal
+                      ? "bg-[#133D2D] text-white"
+                      : "bg-[#FAFAF7] text-[#8C8C85] hover:bg-[#F0F0ED]"
+                  }`}
+                >
+                  {goal === "lose" ? "Lose" : goal === "maintain" ? "Maintain" : "Gain"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Height (cm)</label>
+              <Input type="number" placeholder="163" value={profile.height_cm || ""} onChange={(e) => updateBodyMetrics({ height_cm: +e.target.value || undefined })} className="mt-1.5 !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20" />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-[#8C8C85] uppercase tracking-[0.04em]">Weight (kg)</label>
+              <Input type="number" placeholder="70" value={profile.weight_kg || ""} onChange={(e) => updateBodyMetrics({ weight_kg: +e.target.value || undefined })} className="mt-1.5 !bg-[#FAFAF7] border-0 rounded-xl text-sm py-3 px-4 h-auto focus:ring-2 focus:ring-[#1B4332]/20" />
+            </div>
+          </div>
+          {profile.height_cm && profile.weight_kg && (
+            <p className="text-[10px] text-[#A3A39C] -mt-1">
+              Auto-calibrated to {profile.calorie_target} kcal/day based on your metrics
+            </p>
+          )}
         </CardContent>
       </Card>
 
