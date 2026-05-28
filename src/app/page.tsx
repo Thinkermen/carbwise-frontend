@@ -527,18 +527,12 @@ export default function Home() {
       )}
 
       {plan && (
-        <a
-          href={`https://www.walmart.com/search?q=${encodeURIComponent(
-            Array.from(new Set(
-              plan.meals.flatMap(m => m.foods?.map(f => cleanFoodName(f.ai_name || f.db_name || f.name)) || [])
-            )).join(" ")
-          )}`}
-          target="_blank" rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2.5 w-full py-3.5 px-4 bg-[#0071DC] text-white rounded-full text-sm font-semibold hover:bg-[#005BB5] transition-all duration-300 shadow-[0_4px_24px_rgba(0,113,220,0.15)] hover:shadow-[0_8px_30px_rgba(0,113,220,0.22)]"
+        <div
+          className="flex items-center justify-center gap-2.5 w-full py-3.5 px-4 bg-[#F8F8F7] text-[#A3A39C] rounded-full text-sm font-semibold cursor-not-allowed"
         >
           <ShoppingCart className="w-4 h-4" />
-          Order Ingredients via Walmart
-        </a>
+          Grocery Delivery — Coming Soon
+        </div>
       )}
 
       {/* Floating Feedback Button — mobile-friendly */}

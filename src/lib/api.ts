@@ -11,6 +11,8 @@ export interface FoodSearchResult {
   carb_g: number | null;
   fiber_g: number | null;
   sugar_g: number | null;
+  glycemic_index: number | null;
+  glycemic_load: number | null;
   serving_desc: string | null;
   serving_g: number | null;
   relevance: number;

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Geist } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import Link from "next/link";
@@ -10,9 +9,6 @@ const geistSans = Geist({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "CarbWise — AI Meal Planner",
   description: "AI-powered meal planning and nutrition analysis for diabetes management",
-  other: {
-    "impact-site-verification": "9bda5f7e-f60f-4164-aa56-74b548d8f814",
-  },
 };
 
 const navItems = [
@@ -46,13 +42,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </nav>
         <main className="mx-auto max-w-lg px-4 py-6">{children}</main>
         <Toaster />
-        <Script
-          src="https://utt.impactcdn.com/P-A7349938-17af-46ad-aecd-50e1bac1b8971.js"
-          strategy="afterInteractive"
-        />
-        <Script id="impact-init" strategy="afterInteractive">
-          {`impactStat('transformLinks');impactStat('trackImpression');`}
-        </Script>
       </body>
     </html>
   );
